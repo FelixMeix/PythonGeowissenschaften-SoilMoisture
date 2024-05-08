@@ -1,0 +1,15 @@
+GIT
+
+ORDER/DINGE HOCHLADEN (EIGENES HOCHLADEN)
+
+git add . #alle neuen Dinge hinzufügen, die gepushed werden sollen
+git commit -m"" #Message hinzufügen
+git push -u origin main #pushen
+
+
+WEITERARBEITEN NACH ANDERER PERSON (ÄNDERUNGEN HOLEN)
+
+git status #up to date oder nicht
+# wenn nicht:
+git fetch #Änderungen übernehmen und herunterladen
+git merge #Änderungen verknüpfen
