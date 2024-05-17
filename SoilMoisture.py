@@ -2,7 +2,8 @@ from ismn.interface import ISMN_Interface
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
-import scipy as sp
+from scipy.optimize import minimize
+from scipy.stats import spearmanr
 
 # Felix
 path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
@@ -47,9 +48,49 @@ pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]
 # plt.show()
 
 #Function for SM-Model
-def sm_prediction(sm,pc, lam):
+sm = sm_filter.values
+pc = pc_filter.values #ToDo: pc tag um eins verschieben
+
+start_date = max(sm_filter.index.min(), pc_filter.index.min())
+end_date = min(sm_filter.index.max(), pc_filter.index.max())
+
+# Serien auf den gemeinsamen Zeitbereich beschränken
+common_index = pd.date_range(start_date, end_date)
+sm_filter_synced = sm_filter.reindex(common_index)
+pc_filter_synced = pc_filter.reindex(common_index)
+
+# Kombinieren der synchronisierten Serien in einen DataFrame
+combined_df = pd.DataFrame({'sm_filter': sm_filter_synced, 'pc_filter': pc_filter_synced})
+
+# Löschen der Zeilen mit fehlenden Werten
+combined_df_cleaned = combined_df.dropna()
+
+# Getrennte Serien extrahieren
+sm_filter_cleaned = combined_df_cleaned['sm_filter']
+pc_filter_cleaned = combined_df_cleaned['pc_filter']
+def sm_prediction():
+    sm = sm_filter_cleaned.values
+    pc = pc_filter_cleaned.values
+
+    def error_function(lam, sm, pc):
+        sm_pred = sm * lam + pc
+        return np.sqrt(np.mean((sm_pred - sm) ** 2))
+
+    initial_guess = 0.5
+    result = minimize(error_function, initial_guess, args=(sm, pc))#, bounds=(0, 1))
+
+    lam = result.x[0]
+
     sm_pred = sm * lam + pc
 
+    corr = spearmanr(sm, sm_pred) #ToDo: corr ev anpassen --> anschauen
+
+    return sm_pred, corr, lam
+
+#sm = sm_filter_cleaned.values
+#pc = pc_filter_cleaned.values
+
+predicted_sm, corr, lam = sm_prediction()
 
 
 i = 0
