@@ -20,7 +20,7 @@ ismn_data = ISMN_Interface(path, parallel=False)
 
 station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
-station_nam = "MtVernon"
+#station_nam = "MtVernon"
 
 # function to imput missing data based on Gamma distribution
 def imput_missing(data):
@@ -28,12 +28,12 @@ def imput_missing(data):
     mask = np.isnan(data)
     available = data[~mask]
     print("n_missing: ",n_missing)
-    #a, loc, scale = gamma.fit(available)
-    #gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
-    loc, scale = expon.fit(available)
-    sample = expon.rvs(loc=loc, scale=scale, size=n_missing)
+    a, loc, scale = gamma.fit(available)
+    gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
+    #loc, scale = expon.fit(available)
+    #sample = expon.rvs(loc=loc, scale=scale, size=n_missing)
     
-    data[mask] = sample
+    data[mask] = gamma_sample
     
     #plt.hist(data, bins=100, density=True, alpha=0.6, color='g', label='Data')
 
@@ -55,7 +55,7 @@ def station_filtered(station_nam):
     prec_sensor = [sensor for sensor in sens if target_string in sensor][0]
     
     target_string = "soil_moisture"
-    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
+    sm_sensor = [sensor for sensor in sens if target_string in sensor][6]
 
     sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
     sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
@@ -77,8 +77,8 @@ def station_filtered(station_nam):
     sm_filter = imput_missing(sm_filter.reindex(common_index))
     pc_filter = imput_missing(pc_filter.reindex(common_index))
     
-    sm_filter = sm_filter.resample("D").sum()
-    pc_filter = pc_filter.resample("D").sum()
+    #sm_filter = sm_filter.resample("D").mean()
+    #pc_filter = pc_filter.resample("D").sum()
 
     return sm_filter, pc_filter, lon, lat
 
@@ -90,8 +90,11 @@ def align_timestamps(sm, pc):
     start_date = sm.index.min()  # start at first sm entry because we need pc from the next day
     end_date = pc.index.max()
 
-    common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(days=1))
-    common_index_pc = pd.date_range(start_date + pd.Timedelta(days=1), end_date)
+    #common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(days=1))
+    #common_index_pc = pd.date_range(start_date + pd.Timedelta(days=1), end_date)
+
+    common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(hours=1), freq='H')
+    common_index_pc = pd.date_range(start_date + pd.Timedelta(hours=1), end_date, freq='H')
 
     sm_synced = sm.reindex(common_index_sm)
     pc_synced = pc.reindex(common_index_pc)
@@ -130,6 +133,15 @@ def align_timestamps(sm, pc):
 # plt.show()
 
 
+# function to rescale predicted soil moisture to m^3/m^3 * 100
+def rescale_sm(sm, sm_pred):
+    #: x_scaled = (x – mean(x))/std(x) * std(y) + mean(y)
+    x = sm_pred
+    y = sm
+    x_scaled = (x - np.mean(x))/np.std(x) * np.std(y) + np.mean(y)
+    return x_scaled
+
+
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
     sm, pc, lon, lat = station_filtered(station_nam)
@@ -137,7 +149,8 @@ def sm_prediction(station_nam):
 
     def error_function(lam, sm, pc):
         sm_pred = sm * lam + pc
-        return np.sqrt(np.mean((sm_pred - sm) ** 2)) #ToDo: In Paper schauen, welche error function wir nehmen sollen
+        #return np.sqrt(np.mean((sm_pred - sm) ** 2)) #ToDo: In Paper schauen, welche error function wir nehmen sollen
+        return (1 - spearmanr(sm_pred, sm)[0])
 
     initial_guess = 0.5 # does not make a difference if 0, 0.5 or 1
     result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)])
@@ -152,7 +165,7 @@ def sm_prediction(station_nam):
              pred = 0 # mit 0 anfangen als Startwert
              sm_pred.append(pred)
          else:
-             pred = sm_pred[-1] * lam + df_aligned["pc_t"][i]
+             pred = sm_pred[-1] * lam + df_aligned["pc_t"].iloc[i]
              sm_pred.append(pred)
 
     sm_pred = np.array(sm_pred)
@@ -163,11 +176,17 @@ def sm_prediction(station_nam):
     corr = spearmanr(df_aligned["sm"], sm_pred)
     #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #ToDo rescaling weil unterschiedliche Einheiten
 
+    rescaled_sm = rescale_sm(df_aligned["sm"].values, df_aligned["sm_pred"].values)
+    
+    df_aligned["sm_pred_rescaled"] = rescaled_sm
+    
     df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "spearman": [corr], #"rmse": [rmse],
-                               "sm_pred": [np.array(sm_pred)], "sm": [df_aligned["sm"].values]})
+                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
 
 
     return df_aligned, df_stations
+
+
 
 
 df_1, df_2 = sm_prediction(station_nam)
@@ -175,13 +194,17 @@ df_1, df_2 = sm_prediction(station_nam)
 #plot sm and sm_predict:
 fig2, ax3 = plt.subplots(figsize=(12,4))
 
-ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [mm]')
-ax3.plot(df_1.index, df_1.pc_t, label='Precipitation [mm]')
+#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
+ax3.plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
 
 ax3_2 = ax3.twinx()
-ax3_2.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [m³/m³]', c="green")
-ax3_2.set_ylabel("m³/m³")
+ax3_2.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax3_2.set_ylabel("m³/m³ * 100")
+ax3_2.plot(df_1.index, df_1.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+#ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
+
+#ax3_2.set_ylabel("mm")
 
 ax3.set_title("Station: " + station_nam)
 
@@ -194,6 +217,34 @@ plt.grid(alpha=0.4)
 plt.tight_layout()
 plt.show()
 
+#Plot for one year:
+
+fig4, ax4 = plt.subplots(figsize=(12,4))
+
+df_1_isel = df_1.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
+
+#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
+ax4.plot(df_1_isel.index, df_1_isel.pc_t, label='Precipitation [mm]', c="blue")
+ax4.set_ylabel("mm")
+
+ax4_2 = ax4.twinx()
+ax4_2.plot(df_1_isel.index, df_1_isel.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax4_2.set_ylabel("m³/m³ * 100")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+#ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
+
+#ax3_2.set_ylabel("mm")
+
+ax4.set_title("Station: " + station_nam)
+
+lines_1, labels_1 = ax4.get_legend_handles_labels()
+lines_2, labels_2 = ax4_2.get_legend_handles_labels()
+ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
+
+#plt.legend(loc='best')
+plt.grid(alpha=0.4)
+plt.tight_layout()
+plt.show()
 
 
 # loop over all stations
