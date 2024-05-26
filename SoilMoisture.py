@@ -6,21 +6,26 @@ from scipy.optimize import minimize
 from scipy.stats import spearmanr, gamma, expon
 from datetime import datetime, timedelta
 
+#%%
 #Fragen:
 
 # Felix
 #path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
 # Bettina
-path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
+#path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-
+path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
 
+#%%
+
 station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
 #station_nam = "MtVernon"
+#ismn_data['SCAN']['Mason#1']
+#%%
 
 # function to imput missing data based on Gamma distribution
 def imput_missing(data):
@@ -55,7 +60,7 @@ def station_filtered(station_nam):
     prec_sensor = [sensor for sensor in sens if target_string in sensor][0]
     
     target_string = "soil_moisture"
-    sm_sensor = [sensor for sensor in sens if target_string in sensor][6]
+    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
 
     sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
     sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
