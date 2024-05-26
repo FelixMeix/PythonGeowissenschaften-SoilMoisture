@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.stats import spearmanr, gamma, expon
-from datetime import datetime, timedelta
+from scipy.stats import spearmanr, gamma #, expon
+from datetime import timedelta
 
 #%%
 #Fragen:
@@ -31,6 +31,9 @@ station_nam = "Mason#1"
 def imput_missing(data):
     n_missing = np.sum(np.isnan(data))
     mask = np.isnan(data)
+    
+    n = np.sum([~mask])
+
     available = data[~mask]
     print("n_missing: ",n_missing)
     a, loc, scale = gamma.fit(available)
@@ -47,7 +50,7 @@ def imput_missing(data):
     # pdf = gamma.pdf(x, a, loc=loc, scale=scale)
     # plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
-    return data
+    return data, n
 
 # function to select sensors and filter data
 def station_filtered(station_nam):
@@ -79,13 +82,13 @@ def station_filtered(station_nam):
     end_date = pc_filter.index.max()
     common_index = pd.date_range(start_date, end_date, freq="h")
     
-    sm_filter = imput_missing(sm_filter.reindex(common_index))
-    pc_filter = imput_missing(pc_filter.reindex(common_index))
+    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
+    pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
     
     #sm_filter = sm_filter.resample("D").mean()
     #pc_filter = pc_filter.resample("D").sum()
 
-    return sm_filter, pc_filter, lon, lat
+    return sm_filter, pc_filter, lon, lat, n_sm, n_pc
 
    
 #sm, pc, lon, lat = station_filtered(station_nam)
@@ -149,15 +152,15 @@ def rescale_sm(sm, sm_pred):
 
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
-    sm, pc, lon, lat = station_filtered(station_nam)
+    sm, pc, lon, lat, n_sm, n_pc = station_filtered(station_nam)
     df_aligned = align_timestamps(sm, pc)
 
     def error_function(lam, sm, pc):
         sm_pred = sm * lam + pc
-        #return np.sqrt(np.mean((sm_pred - sm) ** 2)) #ToDo: In Paper schauen, welche error function wir nehmen sollen
-        return (1 - spearmanr(sm_pred, sm)[0])
+        #return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
+        return (1 - (spearmanr(sm_pred, sm)[0]))
 
-    initial_guess = 0.5 # does not make a difference if 0, 0.5 or 1
+    initial_guess = 1 # most lamda stay at 0.5 if initial guess
     result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)])
 
     lam = result.x[0]
@@ -185,7 +188,7 @@ def sm_prediction(station_nam):
     
     df_aligned["sm_pred_rescaled"] = rescaled_sm
     
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "spearman": [corr], #"rmse": [rmse],
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "spearman": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], #"rmse": [rmse],
                                "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
 
 
