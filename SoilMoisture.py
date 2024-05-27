@@ -6,7 +6,7 @@ from scipy.optimize import minimize
 from scipy.stats import spearmanr, gamma #, expon
 from datetime import timedelta
 
-#%%
+
 #Fragen:
 
 # Felix
@@ -19,7 +19,7 @@ path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowiss
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
 
-#%%
+
 
 station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
@@ -194,11 +194,12 @@ def sm_prediction(station_nam):
 
     return df_aligned, df_stations
 
-
+#%%
 
 
 df_1, df_2 = sm_prediction(station_nam)
 
+#%%
 #plot sm and sm_predict:
 fig2, ax3 = plt.subplots(figsize=(12,4))
 
@@ -225,6 +226,7 @@ plt.grid(alpha=0.4)
 plt.tight_layout()
 plt.show()
 
+#%%
 #Plot for one year:
 
 fig4, ax4 = plt.subplots(figsize=(12,4))
@@ -254,7 +256,7 @@ plt.grid(alpha=0.4)
 plt.tight_layout()
 plt.show()
 
-
+#%%
 # loop over all stations
 stations = ['AAMU-jtg', 'Abrams', 'AdamsRanch#1', 'Alcalde', 'AlkaliMesa', 'AllenFarms', 
             'Ames', 'AshValley', 'BeasleyLake', 'Beaumont', 'BlueCreek', 'BodieHills', 
@@ -293,16 +295,21 @@ stations = ['AAMU-jtg', 'Abrams', 'AdamsRanch#1', 'Alcalde', 'AlkaliMesa', 'Alle
 
 result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "spearman","sm_pred", "sm"]) #"rmse"
 for station in stations:
-    name = station
-    station = ismn_data['SCAN'][name]
-    sens = station.sensors
-    if len([sensor for sensor in sens if "precipitation" in sensor])==0:
-        print(name)
-        pass
+    if station == 'Sidney':             # to avoid FitErrors at these stations
+        print('Station Sidney passed')
+    elif station == 'Violett':
+        print('Station Violett passed')
     else:
-        df_1, df_2 = sm_prediction(name)
-        result = pd.concat([result, df_2], axis=0, ignore_index=True)
-
+        name = station
+        station = ismn_data['SCAN'][name]
+        sens = station.sensors
+        if len([sensor for sensor in sens if "precipitation" in sensor])==0:
+            print(name)
+            pass
+        else:
+            df_1, df_2 = sm_prediction(name)
+            result = pd.concat([result, df_2], axis=0, ignore_index=True)
+#%%
 ###
 result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
 
@@ -338,7 +345,7 @@ gl.right_labels = False
 
 
 
-i=0
+#i=0
 # pc_filter.plot(ax=ax1, label='Precipitation', linewidth=0.8)
 #
 # ax2 = ax1.twinx()
