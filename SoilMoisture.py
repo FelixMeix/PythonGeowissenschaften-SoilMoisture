@@ -3,8 +3,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.stats import spearmanr, gamma #, expon
+from scipy.stats import spearmanr, pearsonr, gamma #, expon
 from datetime import timedelta
+#%matplotlib inline
+
 
 
 #Fragen:
@@ -149,6 +151,17 @@ def rescale_sm(sm, sm_pred):
     x_scaled = (x - np.mean(x))/np.std(x) * np.std(y) + np.mean(y)
     return x_scaled
 
+#function to optimize lambda by maximizing the pearson correlation
+#also results in lam = 1 for all stations
+def optimize_lam(sm, pc):
+    max_corr = 0
+    for lam in np.arange(0, 1.01, 0.01):
+        sm_pred = sm * lam + pc
+        corr = pearsonr(sm_pred, sm)[0]
+        if corr > max_corr:
+            max_corr = corr
+            optimized_lam = lam
+    return optimized_lam
 
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
@@ -156,14 +169,24 @@ def sm_prediction(station_nam):
     df_aligned = align_timestamps(sm, pc)
 
     def error_function(lam, sm, pc):
+        rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
         sm_pred = sm * lam + pc
-        #return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
-        return (1 - (spearmanr(sm_pred, sm)[0]))
+        return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
+        #return (1 - (spearmanr(sm_pred, sm)[0]))
 
-    initial_guess = 1 # most lamda stay at 0.5 if initial guess
+    initial_guess = 0.5 # most lamda stay at 0.5 if initial guess
     result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)])
-
     lam = result.x[0]
+    
+    # test with other methods, results always in lam=initial guess or lam=1 (or lam >> 1 when bounds don't work for method)
+    #lam_l = []
+    #methods = ['Nelder-Mead', 'Powell', 'CG', 'BFGS', 'L-BFGS-B', 'TNC', 'COBYLA', 'SLSQP', 'trust-constr']
+    #for meth in methods:
+     #   result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)], method=meth)
+      #  lam_l.append(result.x[0])
+    #lam = lam_l[0]
+    
+    #lam = optimize_lam(df_aligned["sm_t_minus_1"], df_aligned["pc_t"])
 
     sm_pred = []
 
@@ -181,14 +204,14 @@ def sm_prediction(station_nam):
     #sm_pred = df_aligned["sm_t_minus_1"] * lam + df_aligned["pc_t"]
     df_aligned['sm_pred'] = sm_pred
 
-    corr = spearmanr(df_aligned["sm"], sm_pred)
+    corr = pearsonr(df_aligned["sm"], sm_pred)
     #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #ToDo rescaling weil unterschiedliche Einheiten
 
     rescaled_sm = rescale_sm(df_aligned["sm"].values, df_aligned["sm_pred"].values)
     
     df_aligned["sm_pred_rescaled"] = rescaled_sm
     
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "spearman": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], #"rmse": [rmse],
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], #"rmse": [rmse],
                                "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
 
 
@@ -224,7 +247,7 @@ ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), l
 #plt.legend(loc='best')
 plt.grid(alpha=0.4)
 plt.tight_layout()
-plt.show()
+#plt.show()
 
 #%%
 #Plot for one year:
@@ -293,7 +316,7 @@ stations = ['AAMU-jtg', 'Abrams', 'AdamsRanch#1', 'Alcalde', 'AlkaliMesa', 'Alle
             'WTARS', 'Wabeno#1', 'Wakulla#1', 'WalnutGulch#1', 'Watkinsville#1', 'Wedowee', 'Weslaco', 
             'WestSummit', 'WillowWells', 'YoumansFarm']
 
-result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "spearman","sm_pred", "sm"]) #"rmse"
+result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "pearson","sm_pred", "sm"]) #"rmse"
 for station in stations:
     if station == 'Sidney':             # to avoid FitErrors at these stations
         print('Station Sidney passed')
@@ -309,9 +332,16 @@ for station in stations:
         else:
             df_1, df_2 = sm_prediction(name)
             result = pd.concat([result, df_2], axis=0, ignore_index=True)
+
+
+print(result['lamda'][:30])            
+print(min(result['lamda']))
+print(max(result['lamda']))
+
+
 #%%
 ###
-result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
+result["corr_coef"] = [result["pearson"][row][0] for row in range(len(result["lon"]))] 
 
 lat_north = 50
 lat_south = 23
@@ -335,7 +365,7 @@ sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=re
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
 
-ax.set_title("Spearman: Measured Precipitation and Predicted Soil Moisture")
+ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
 gl.right_labels = False
