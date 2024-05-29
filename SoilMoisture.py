@@ -169,8 +169,8 @@ def sm_prediction(station_nam):
     df_aligned = align_timestamps(sm, pc)
 
     def error_function(lam, sm, pc):
-        rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
-        sm_pred = sm * lam + pc
+        pc_rescaled = rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
+        sm_pred = sm * lam + pc_rescaled
         return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
         #return (1 - (spearmanr(sm_pred, sm)[0]))
 
@@ -205,13 +205,15 @@ def sm_prediction(station_nam):
     df_aligned['sm_pred'] = sm_pred
 
     corr = pearsonr(df_aligned["sm"], sm_pred)
-    #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #ToDo rescaling weil unterschiedliche Einheiten
+    #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #unten mit rescaled
 
     rescaled_sm = rescale_sm(df_aligned["sm"].values, df_aligned["sm_pred"].values)
     
+    rmse = np.sqrt(np.mean((rescaled_sm - df_aligned["sm"].values)**2))
+    
     df_aligned["sm_pred_rescaled"] = rescaled_sm
     
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], #"rmse": [rmse],
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
                                "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
 
 
