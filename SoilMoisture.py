@@ -14,9 +14,9 @@ from datetime import timedelta
 # Felix
 #path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
 # Bettina
-#path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
+path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -25,6 +25,10 @@ ismn_data = ISMN_Interface(path, parallel=False)
 
 station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
+
+# station with the least missing values:
+station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0
+
 #station_nam = "MtVernon"
 #ismn_data['SCAN']['Mason#1']
 #%%
@@ -37,7 +41,7 @@ def imput_missing(data):
     n = np.sum([~mask])
 
     available = data[~mask]
-    print("n_missing: ",n_missing)
+    #print("n_missing: ",n_missing)
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     #loc, scale = expon.fit(available)
@@ -84,7 +88,10 @@ def station_filtered(station_nam):
     end_date = pc_filter.index.max()
     common_index = pd.date_range(start_date, end_date, freq="h")
     
+    #print(station_nam)
+    #print("sm")
     sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
+    #print("pc")
     pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
     
     #sm_filter = sm_filter.resample("D").mean()
@@ -204,14 +211,17 @@ def sm_prediction(station_nam):
     #sm_pred = df_aligned["sm_t_minus_1"] * lam + df_aligned["pc_t"]
     df_aligned['sm_pred'] = sm_pred
 
-    corr = pearsonr(df_aligned["sm"], sm_pred)
-    #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #ToDo rescaling weil unterschiedliche Einheiten
+    corr_pearson = pearsonr(df_aligned["sm"], sm_pred)
+    corr_spearman = spearmanr(df_aligned["sm"], sm_pred)
+    #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #unten mit rescaled
 
     rescaled_sm = rescale_sm(df_aligned["sm"].values, df_aligned["sm_pred"].values)
     
+    rmse = np.sqrt(np.mean((rescaled_sm - df_aligned["sm"].values)**2))
+    
     df_aligned["sm_pred_rescaled"] = rescaled_sm
     
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr],"n_sm" : [n_sm], "n_pc" : [n_pc], #"rmse": [rmse],
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
                                "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
 
 
@@ -316,7 +326,7 @@ stations = ['AAMU-jtg', 'Abrams', 'AdamsRanch#1', 'Alcalde', 'AlkaliMesa', 'Alle
             'WTARS', 'Wabeno#1', 'Wakulla#1', 'WalnutGulch#1', 'Watkinsville#1', 'Wedowee', 'Weslaco', 
             'WestSummit', 'WillowWells', 'YoumansFarm']
 
-result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "pearson","sm_pred", "sm"]) #"rmse"
+result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "pearson", "spearman","sm_pred", "sm"]) #"rmse"
 for station in stations:
     if station == 'Sidney':             # to avoid FitErrors at these stations
         print('Station Sidney passed')
@@ -342,7 +352,7 @@ np.median(result['lamda'])
 
 #%%
 ###
-result["corr_coef"] = [result["pearson"][row][0] for row in range(len(result["lon"]))] 
+result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
 
 lat_north = 50
 lat_south = 23
@@ -366,7 +376,8 @@ sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=re
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
 
-ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
+#ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
+ax.set_title("Spearman: Measured Precipitation and Predicted Soil Moisture")
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
 gl.right_labels = False
