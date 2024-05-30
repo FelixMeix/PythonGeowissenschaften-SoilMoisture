@@ -169,8 +169,8 @@ def sm_prediction(station_nam):
     df_aligned = align_timestamps(sm, pc)
 
     def error_function(lam, sm, pc):
-        rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
-        sm_pred = sm * lam + pc
+        pc_rescaled = rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
+        sm_pred = sm * lam + pc_rescaled
         return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
         #return (1 - (spearmanr(sm_pred, sm)[0]))
 
@@ -332,11 +332,12 @@ for station in stations:
         else:
             df_1, df_2 = sm_prediction(name)
             result = pd.concat([result, df_2], axis=0, ignore_index=True)
+#%%
 
-
-print(result['lamda'][:30])            
+print(result['lamda'][30:60])            
 print(min(result['lamda']))
 print(max(result['lamda']))
+np.median(result['lamda'])
 
 
 #%%
