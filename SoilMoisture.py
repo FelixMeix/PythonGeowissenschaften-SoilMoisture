@@ -6,6 +6,8 @@ from scipy.optimize import minimize
 from scipy.stats import spearmanr, pearsonr, gamma #, expon
 from datetime import timedelta
 #%matplotlib inline
+from IPython import get_ipython
+get_ipython().run_line_magic('matplotlib', 'inline')
 
 
 
@@ -14,9 +16,9 @@ from datetime import timedelta
 # Felix
 #path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
 # Bettina
-path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
+#path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -27,9 +29,12 @@ station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
 
 # station with the least missing values:
-station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0
+#station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0; only up to 2015
 
-#station_nam = "MtVernon"
+
+station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
+
+#station_nam = "MtVernon" # sm n_m missing: 34; pc n_missing: 40; up to 2024 (second choice)
 #ismn_data['SCAN']['Mason#1']
 #%%
 
@@ -41,7 +46,7 @@ def imput_missing(data):
     n = np.sum([~mask])
 
     available = data[~mask]
-    #print("n_missing: ",n_missing)
+    print("n_missing: ",n_missing)
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     #loc, scale = expon.fit(available)
@@ -52,9 +57,9 @@ def imput_missing(data):
     #plt.hist(data, bins=100, density=True, alpha=0.6, color='g', label='Data')
 
     # # Plot the PDF of the fitted gamma distribution
-    # x = np.linspace(0, data.max(), 100)
-    # pdf = gamma.pdf(x, a, loc=loc, scale=scale)
-    # plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
+    #x = np.linspace(0, data.max(), 100)
+    #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+    #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
     return data, n
 
@@ -66,7 +71,7 @@ def station_filtered(station_nam):
     sens = station.sensors
     
     target_string = "precipitation"
-    prec_sensor = [sensor for sensor in sens if target_string in sensor][0]
+    prec_sensor = [sensor for sensor in sens if target_string in sensor][-1] #changed from 0 to -1 to have pulse count pc sensor (newer data)
     
     target_string = "soil_moisture"
     sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
@@ -81,7 +86,7 @@ def station_filtered(station_nam):
     pc_insight = sensor_pc.data.precipitation
     
     sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
-    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]
+    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0][sensor_pc.data.precipitation < 100]
     
     # imput missing hourly values
     start_date = sm_filter.index.min()
@@ -172,6 +177,7 @@ def optimize_lam(sm, pc):
 
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
+    print(station_nam)
     sm, pc, lon, lat, n_sm, n_pc = station_filtered(station_nam)
     df_aligned = align_timestamps(sm, pc)
 
@@ -347,8 +353,7 @@ for station in stations:
 print(result['lamda'][30:60])            
 print(min(result['lamda']))
 print(max(result['lamda']))
-np.median(result['lamda'])
-
+print(np.median(result['lamda']))
 
 #%%
 ###
@@ -406,3 +411,114 @@ gl.right_labels = False
 # plt.grid(alpha=0.4)
 # plt.tight_layout()
 # plt.show()
+#%%
+# for chosen station set percentage of pc values to nan artifically
+
+station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
+df_1, df_2 = sm_prediction(station_nam)
+ds_pc = df_1['pc_t']
+
+percentage = [10, 20, 30, 50, 70]
+ds_del_l = []
+
+for perc in percentage:
+    ds_del = ds_pc.copy()
+    factor = int((len(ds_pc)*perc)/100)
+    ds_sample = ds_del.sample(factor)
+    ds_sample.loc[:] = 'NaN'
+    ds_del.update(ds_sample)
+    #len(df_pc_del[df_pc_del=='NaN'])/len(df_pc_del) # to verify
+    ds_del_l.append(ds_del)
+
+# create df with all different NaN percentages
+df_del = pd.concat([ds for ds in ds_del_l], axis=1)
+df_del.columns =[f'{str(perc)}% NaN' for perc in percentage]
+
+#%%
+
+# refill nan values in 3 different ways:
+
+# 1. gamma distribution
+
+# function to fill nan values based on Gamma distribution
+def refill_gamma(ds):
+    n_missing = len(ds[ds=='NaN'])
+    available = ds[ds!='NaN']
+    
+    available = pd.to_numeric(available, errors='coerce') # to avoid input type error
+    
+    a, loc, scale = gamma.fit(available)
+    gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
+    
+    ds_filled = ds.copy()
+    ds_filled[ds_filled=='NaN'] = gamma_sample
+    
+    x = np.linspace(0, np.max(ds_filled), 100)
+    pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+    plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
+    
+    return ds_filled
+
+ds_gamma_refilled_l = []
+for column in df_del.columns:
+    ds_gamma_refilled_l.append(refill_gamma(df_del[column]))
+
+# df with all gamma refilled series
+df_gamma_refilled = pd.concat([ds for ds in ds_gamma_refilled_l], axis=1)
+df_gamma_refilled
+
+#%%
+# 2. machine learning
+# chatgpt, läuft noch nicht
+from sklearn.impute import KNNImputer
+import matplotlib.pyplot as plt
+
+# Load the dataset
+data = df_del['10% NaN']
+
+# Display the initial data
+print(data.head())
+
+# Convert the column to numpy array for KNN Imputer
+precipitation = data.values.reshape(-1, 1)
+
+# Apply KNN Imputer
+imputer = KNNImputer(n_neighbors=5)
+precipitation_imputed = imputer.fit_transform(precipitation)
+
+# Convert the imputed data back to a DataFrame
+#data['precipitation_imputed'] = precipitation_imputed
+data_df = pd.DataFrame(data, precipitation_imputed)
+data_df.columns = ['precipitation', 'precipitation_imputed']
+
+# Plot the original vs imputed data
+plt.figure(figsize=(12, 6))
+plt.plot(data_df['precipitation'], label='Original', marker='o')
+plt.plot(data_df['precipitation_imputed'], label='Imputed', linestyle='--')
+plt.legend()
+plt.show()
+
+print(data.head())
+
+
+#%%
+# 3. set to 0
+def refill_0(ds):
+    ds_filled = ds.copy()
+    ds_filled[ds_filled=='NaN'] = 0.0
+    return ds_filled
+
+ds_0_refilled_l = []
+for column in df_del.columns:
+    ds_0_refilled_l.append(refill_0(df_del[column]))
+
+# df with all gamma refilled series
+df_0_refilled = pd.concat([ds for ds in ds_0_refilled_l], axis=1)
+df_0_refilled
+    
+
+
+
+
+
+
