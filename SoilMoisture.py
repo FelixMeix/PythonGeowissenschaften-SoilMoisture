@@ -29,7 +29,11 @@ station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
 
 # station with the least missing values:
+<<<<<<< HEAD
+#station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0 #only 10 months
+=======
 #station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0; only up to 2015
+>>>>>>> refs/remotes/origin/main
 
 
 station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
@@ -252,7 +256,7 @@ ax3.plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
 
 ax3_2 = ax3.twinx()
-ax3_2.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax3_2.plot(df_1.index, df_1.sm*100*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax3_2.set_ylabel("m³/m³ * 100")
 ax3_2.plot(df_1.index, df_1.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
 #ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
@@ -282,9 +286,9 @@ ax4.plot(df_1_isel.index, df_1_isel.pc_t, label='Precipitation [mm]', c="blue")
 ax4.set_ylabel("mm")
 
 ax4_2 = ax4.twinx()
-ax4_2.plot(df_1_isel.index, df_1_isel.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax4_2.set_ylabel("m³/m³ * 100")
-ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
 #ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
 
 #ax3_2.set_ylabel("mm")
@@ -360,19 +364,84 @@ print(min(result['lamda']))
 print(max(result['lamda']))
 print(np.median(result['lamda']))
 
-#%%
-###
-result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
+# find and compare two stations with different lamda
+
+low_lamda = result.loc[result["n_sm"] > 10000]
+low_lamda = low_lamda["station"].loc[low_lamda["lamda"].idxmin()]
+high_lamda = result["station"].iloc[np.argmax(result["lamda"])]
+
+subresult = result.loc[result["station"].isin([low_lamda, high_lamda])]
+
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 
 lat_north = 50
 lat_south = 23
 lon_west = -120
 lon_east = -75
 
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
+fig = plt.figure(figsize=(10, 6))#, subplot_kw={'projection': ccrs.LambertConformal()})
 
-#ax = plt.axes(projection = ccrs.LambertConformal())
+ax = plt.axes(projection=ccrs.LambertConformal())
+ax.set_extent([lon_west, lon_east, lat_south, lat_north])
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.STATES)
+ax.add_feature(cfeature.LAND)
+ax.add_feature(cfeature.OCEAN)
+
+#sc = ax.scatter(subresult["lon"], subresult["lat"], transform=ccrs.PlateCarree(), color="red", ec="k", s=10) #, label="SCAN", edgecolors="k"
+
+ax.set_title("Two stations with highest and lowest lamda")
+
+station = low_lamda
+for station in [low_lamda, high_lamda]:
+    res = result.loc[result["station"].isin([station])]
+    ax.plot(res['lon'], res['lat'], 'ro', transform=ccrs.PlateCarree())
+    ax.annotate(
+        f"Station: {station}\n loss factor: {round(float(res['lamda']),2)}\n spearman: {round(float(res['corr_coef']),2)}\n rmse: {round(float(res['rmse']),2)}\n n sm: {int(res['n_sm'])}",
+        xy=(res['lon'], res['lat']),
+        xycoords= ccrs.LambertConformal()._as_mpl_transform(ax),
+        xytext=(10,10),
+        textcoords='offset points',
+        arrowprops=dict(facecolor='black', shrink=0.05),
+        bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='wheat', alpha=0.5)
+        )
+    #plt.text(res["lon"], res["lat"], f"Station: {station}\n loss factor: {round(float(res['lamda']),2)}\n spearman: {round(float(res['corr_coef']),2)}\n rmse: {round(float(res['rmse']),2)}\n n sm: {int(res['n_sm'])}",
+     #        horizontalalignment="left", transform=ccrs.PlateCarree())
+
+gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
+gl.top_labels = False
+gl.right_labels = False
+
+plt.savefig("high_low_lamda_cartopy.jpg", dpi=300)
+
+# and plot for 1 yr
+fig, ax = plt.subplots(1,2,figsize=(12,4))
+
+for i,station_nam in enumerate([low_lamda, high_lamda]):
+    df_1, df_2 = sm_prediction(station_nam)
+    
+    df_1 = df_1.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
+    
+    ax[i].plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [mm]', c="green")
+    ax[i].set_ylabel("mm")
+    ax[i].plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="red", linewidth=0.5, linestyle="--")
+    
+    ax[i].set_title("Station: " + station_nam + f"\n lamda = {round(float(df_2['lamda']),4)}")
+
+    ax[i].legend(loc='best')
+    ax[i].grid(alpha=0.4)
+plt.tight_layout()
+plt.show()
+
+plt.savefig("high_low_lamda_prec_sm_mm.jpg", dpi=300)
+
+#%%
+###
+result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
+
+# cartopy plot for correlation  #added number of measurements as size
+
 fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
 
 
@@ -382,20 +451,76 @@ ax.add_feature(cfeature.STATES)
 ax.add_feature(cfeature.LAND)
 ax.add_feature(cfeature.OCEAN)
 
-sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=result["corr_coef"], cmap="plasma") #, label="SCAN", edgecolors="k"
+sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), 
+                c=result["corr_coef"], cmap="plasma", s=result["n_sm"]/1000,
+                ec="k") #, label="SCAN", edgecolors="k"
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
 
-#ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
-ax.set_title("Spearman: Measured Precipitation and Predicted Soil Moisture")
+plt.title("Spearman: Measured Soil Moisture and Predicted Soil Moisture \n scaled after number of available measurements")
+#plt.suptitle("scaled after number of available measurements", y=1)
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
 gl.right_labels = False
 
-#ax.legend()
+plt.savefig("Spearman_cartopy.jpg", dpi=300)
+
+# scatterplot for correlation coefficient and lamda
+
+fig, ax = plt.subplots(figsize=(12,4))
+
+#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
+ax.scatter(result["lamda"], result["corr_coef"], c="blue")
+ax.set_ylabel("spearman correlation coefficient")
+ax.set_xlabel("loss coefficient lamda") #r$\lamda$
+
+ax.set_title("all stations - spearman correlation over lamda")
+
+plt.grid(alpha=0.4)
+plt.tight_layout()
+plt.show()
+
+plt.savefig("corr_lamda_scatter.jpg", dpi=300)
+
+# cartopy for rmse
+
+fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
+
+ax.set_extent([lon_west, lon_east, lat_south, lat_north])
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.STATES)
+ax.add_feature(cfeature.LAND)
+ax.add_feature(cfeature.OCEAN)
+
+sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=result["rmse"]*100, 
+                cmap="gist_rainbow_r", ec="k", vmin=0, vmax=95) #, label="SCAN", edgecolors="k"
+cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
+cbar.set_label('Root Mean Squared Error [m³/m³ * 100]')
+
+#ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
+ax.set_title("RSME: Measured Precipitation and Predicted Soil Moisture")
+gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
+gl.top_labels = False
+gl.right_labels = False
+
+plt.savefig("RMSE_cartopy.jpg", dpi=300)
 
 
+# histogram for lamda 
 
+fig, ax = plt.subplots(figsize=(12,4))
+
+ax.hist(result["lamda"], ec="k", fc="lightblue", bins=20, density=False, cumulative=False)
+ax.set_ylabel("absolute frequency")
+ax.set_xlabel("loss coefficient lamda")
+
+ax.set_title("all stations - lamda ")
+
+plt.grid(alpha=0.4)
+plt.tight_layout()
+plt.show()
+
+plt.savefig("Lamda_histo.jpg", dpi=300)
 
 #i=0
 # pc_filter.plot(ax=ax1, label='Precipitation', linewidth=0.8)
