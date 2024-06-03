@@ -29,12 +29,8 @@ station_nam = "MccrackenMesa"
 station_nam = "Mason#1"
 
 # station with the least missing values:
-<<<<<<< HEAD
-#station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0 #only 10 months
-=======
-#station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0; only up to 2015
->>>>>>> refs/remotes/origin/main
 
+#station_nam = "Hytop" # sm n_missing:  1; pc n_missing:  0 #only 10 months
 
 station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
 
@@ -559,7 +555,7 @@ for perc in percentage:
     factor = int((len(ds_pc)*perc)/100)
     ds_sample = ds_del.sample(factor)
     ds_del.loc[ds_sample.index] = np.nan
-    print(ds_del.isnull().sum()/len(ds_del)) # to verify
+    #print(ds_del.isnull().sum()/len(ds_del)) # to verify
     ds_del_l.append(ds_del)
 
 # create df with all different NaN percentages
@@ -779,11 +775,66 @@ def sm_prediction_2(df_aligned, ds_refilled):
 #%%
 # predict sm with refilled pc dataframes and get correlations
 
-df_1_2, df_2_2 = sm_prediction_2(df_1, df_0_refilled["10% NaN"])
-df_2_2["spearman"][0]
+corr_gamma_l, corr_kNN_l, corr_0_l = [], [], []
+columns = df_gamma_refilled.columns
+
+for column in columns:
+    df_2_2 = sm_prediction_2(df_1, df_gamma_refilled[column])[1]
+    corr = df_2_2["spearman"][0][0]
+    corr_gamma_l.append(round(corr, 3))
+
+    df_2_2 = sm_prediction_2(df_1, df_kNN_refilled[column])[1]
+    corr = df_2_2["spearman"][0][0]
+    corr_kNN_l.append(round(corr, 3))
+    
+    df_2_2 = sm_prediction_2(df_1, df_0_refilled[column])[1]
+    corr = df_2_2["spearman"][0][0]
+    corr_0_l.append(round(corr, 3))
+
+#drop pvalue in dfs
+corr_gamma = pd.DataFrame([corr_gamma_l], columns=columns)
+corr_kNN = pd.DataFrame([corr_kNN_l], columns=columns)
+corr_0 = pd.DataFrame([corr_0_l], columns=columns)
+
+#%%
+
+# spearman correlation of original and refilled values
+
+corr_gamma_l2, corr_kNN_l2, corr_0_l2 = [], [], []
+mask_valid = ds_pc.notnull()
+
+for column in columns:
+    
+    corr = spearmanr(ds_pc[mask_valid], df_gamma_refilled[column][mask_valid])[0]
+    corr_gamma_l2.append(round(corr, 3))
+
+    corr = spearmanr(ds_pc[mask_valid], df_kNN_refilled[column][mask_valid])[0]
+    corr_kNN_l2.append(round(corr, 3))
+
+    corr = spearmanr(ds_pc[mask_valid], df_0_refilled[column][mask_valid])[0]
+    corr_0_l2.append(round(corr, 3))
+
+corr_gamma_2 = pd.DataFrame([corr_gamma_l2], columns=columns)
+corr_kNN_2 = pd.DataFrame([corr_kNN_l2], columns=columns)
+corr_0_2 = pd.DataFrame([corr_0_l2], columns=columns)
 
 
+#%%
+#plot bar diagramm
 
+fig, ax = plt.subplots(figsize=(8, 5))
 
+x = np.arange(len(columns))  # the label locations
+width = 0.25  # the width of the bars
+
+ax.bar(x - width, corr_gamma_l2, width, label='gamma distribution', color='turquoise')
+ax.bar(x, corr_kNN_l2, width, label='kNN Imputer', color='royalblue')
+ax.bar(x + width, corr_0_l2, width, label='0', color='purple')
+
+ax.set_ylabel('correlation coefficient')
+ax.set_title('spearman correlation of original and refilled values')
+ax.set_xticks(x, columns)
+ax.set_yticks(np.arange(0,1.1,0.1))
+ax.legend(title='NaN values refilled by')
 
 
