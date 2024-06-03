@@ -350,7 +350,7 @@ for station in stations:
             result = pd.concat([result, df_2], axis=0, ignore_index=True)
 #%%
 
-print(result['lamda'][30:60])            
+#print(result['lamda'][:30])            
 print(min(result['lamda']))
 print(max(result['lamda']))
 print(np.median(result['lamda']))
@@ -411,6 +411,7 @@ gl.right_labels = False
 # plt.grid(alpha=0.4)
 # plt.tight_layout()
 # plt.show()
+
 #%%
 # for chosen station set percentage of pc values to nan artifically
 
@@ -425,9 +426,8 @@ for perc in percentage:
     ds_del = ds_pc.copy()
     factor = int((len(ds_pc)*perc)/100)
     ds_sample = ds_del.sample(factor)
-    ds_sample.loc[:] = 'NaN'
-    ds_del.update(ds_sample)
-    #len(df_pc_del[df_pc_del=='NaN'])/len(df_pc_del) # to verify
+    ds_del.loc[ds_sample.index] = np.nan
+    #print(ds_del.isnull().sum()/len(ds_del)) # to verify
     ds_del_l.append(ds_del)
 
 # create df with all different NaN percentages
@@ -442,21 +442,21 @@ df_del.columns =[f'{str(perc)}% NaN' for perc in percentage]
 
 # function to fill nan values based on Gamma distribution
 def refill_gamma(ds):
-    n_missing = len(ds[ds=='NaN'])
-    available = ds[ds!='NaN']
+    n_missing = ds.isnull().sum()
+    available = ds[ds.notnull()]
     
-    available = pd.to_numeric(available, errors='coerce') # to avoid input type error
+    #available = pd.to_numeric(available, errors='coerce') # to avoid input error
     
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     
     ds_filled = ds.copy()
-    ds_filled[ds_filled=='NaN'] = gamma_sample
+    ds_filled[ds_filled.isnull()] = gamma_sample
     
-    x = np.linspace(0, np.max(ds_filled), 100)
-    pdf = gamma.pdf(x, a, loc=loc, scale=scale)
-    plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
-    
+    #x = np.linspace(0, np.max(ds_filled), 100)
+    #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+    #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
+
     return ds_filled
 
 ds_gamma_refilled_l = []
@@ -465,47 +465,103 @@ for column in df_del.columns:
 
 # df with all gamma refilled series
 df_gamma_refilled = pd.concat([ds for ds in ds_gamma_refilled_l], axis=1)
-df_gamma_refilled
+df_gamma_refilled.plot()
 
 #%%
 # 2. machine learning
-# chatgpt, läuft noch nicht
-from sklearn.impute import KNNImputer
-import matplotlib.pyplot as plt
 
-# Load the dataset
-data = df_del['10% NaN']
+from sklearn import metrics
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from sklearn.tree import DecisionTreeRegressor
 
-# Display the initial data
-print(data.head())
+ds_sm = df_1['sm']
 
-# Convert the column to numpy array for KNN Imputer
-precipitation = data.values.reshape(-1, 1)
+ds_y = df_del['10% NaN'].copy()
+NAN_indices = ds_y[ds_y.isnull()].index
+ds_x = ds_sm.copy()
 
-# Apply KNN Imputer
-imputer = KNNImputer(n_neighbors=5)
-precipitation_imputed = imputer.fit_transform(precipitation)
 
-# Convert the imputed data back to a DataFrame
-#data['precipitation_imputed'] = precipitation_imputed
-data_df = pd.DataFrame(data, precipitation_imputed)
-data_df.columns = ['precipitation', 'precipitation_imputed']
+# Training Data
+y_trn = ds_y.drop(NAN_indices , axis=0).copy()
+X_trn = ds_x.drop(NAN_indices , axis=0).copy()
 
-# Plot the original vs imputed data
-plt.figure(figsize=(12, 6))
-plt.plot(data_df['precipitation'], label='Original', marker='o')
-plt.plot(data_df['precipitation_imputed'], label='Imputed', linestyle='--')
-plt.legend()
-plt.show()
+# Testing Data
+y_tst = ds_pc.loc[NAN_indices]      # y_tst are the original data
+X_tst = ds_x.loc[NAN_indices]
 
-print(data.head())
+print('Training set shape : ', X_trn.shape)
+print('Testing set shape : ', X_tst.shape)
+
+# Convert Training and Testing dataframes to arrays to make them ready for modeling
+X_trn = X_trn.to_numpy().reshape(-1,1)
+y_trn = y_trn.to_numpy().reshape(-1,1)
+X_tst = X_tst.to_numpy().reshape(-1,1)
+y_tst = y_tst.to_numpy().reshape(-1,1)
+
+# function to check accuracy
+def acc_chk (y_tst , y_hat):
+    # Mean absolute error
+    MAE = metrics.mean_absolute_error(y_tst ,y_hat)
+    
+    # Mean Suared Error (MSE)
+    MSE = metrics.mean_squared_error(y_tst ,y_hat)
+    
+    # R2-score
+    R2_sc = metrics.r2_score(y_tst ,y_hat)
+    
+    print("Mean absolute error: %.2f" % MAE)
+    print("Mean Squared Error : %.2f" % MSE)
+    print("R2-score           : %.2f" % R2_sc )
+    
+    return MAE , MSE , R2_sc
+
+# Linear Regression
+
+LR = LinearRegression(fit_intercept=True,copy_X=True,n_jobs=-1)
+LR.fit(X_trn ,y_trn)
+yhat_NANLR = LR.predict(X_tst)
+
+print ('Accuracy scores for filling NAN with Linear Regression model are:')
+NANLR_MAE , NANLR_MSE , NANLR_R2_sc = acc_chk(y_tst , yhat_NANLR)
+
+print('LR Model Train Score is : ' , LR.score(X_trn, y_trn))
+print('LR Model Test Score is : ' , LR.score(X_tst, y_tst))
+
+
+# Support Vector Regressor
+
+SVR = SVR(C = 1.0 ,epsilon=0.1,kernel = 'rbf') # it also can be : linear, poly, rbf, sigmoid, precomputed
+SVR.fit(X_trn, y_trn)
+
+yhat_NANSVR = LR.predict(X_tst)
+
+print ('Accuracy scores for filling NAN with Support Vector Regressor model are:')
+NANSVR_MAE , NANSVR_MSE , NANSVR_R2_sc = acc_chk(y_tst , yhat_NANSVR)
+
+print('SVR Model Train Score is : ' , SVR.score(X_trn, y_trn))
+print('SVR Model Test Score is  : ' , SVR.score(X_tst, y_tst))
+
+
+# Decision Tree Regressor
+
+DTR = DecisionTreeRegressor( max_depth=3)
+DTR.fit(X_trn, y_trn)
+
+yhat_NANDTR = DTR.predict(X_tst)
+
+print ('Accuracy scores for filling NAN with Decision Tree Regressor model are:')
+NANDTR_MAE , NANDTR_MSE , NANDTR_R2_sc = acc_chk(y_tst , yhat_NANDTR)
+
+print('DTR Model Train Score is : ' , DTR.score(X_trn, y_trn))
+print('DTR Model Test Score is  : ' , DTR.score(X_tst, y_tst))
 
 
 #%%
 # 3. set to 0
 def refill_0(ds):
     ds_filled = ds.copy()
-    ds_filled[ds_filled=='NaN'] = 0.0
+    ds_filled[ds_filled.isnull()] = 0.0
     return ds_filled
 
 ds_0_refilled_l = []
@@ -514,7 +570,7 @@ for column in df_del.columns:
 
 # df with all gamma refilled series
 df_0_refilled = pd.concat([ds for ds in ds_0_refilled_l], axis=1)
-df_0_refilled
+#df_0_refilled.plot()
     
 
 
