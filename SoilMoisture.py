@@ -52,7 +52,8 @@ def imput_missing(data):
     #loc, scale = expon.fit(available)
     #sample = expon.rvs(loc=loc, scale=scale, size=n_missing)
     
-    data[mask] = gamma_sample
+    data_imputed = data.copy()
+    data_imputed[mask] = gamma_sample
     
     #plt.hist(data, bins=100, density=True, alpha=0.6, color='g', label='Data')
 
@@ -61,7 +62,7 @@ def imput_missing(data):
     #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
     #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
-    return data, n
+    return data_imputed, n
 
 # function to select sensors and filter data
 def station_filtered(station_nam):
@@ -93,6 +94,8 @@ def station_filtered(station_nam):
     end_date = pc_filter.index.max()
     common_index = pd.date_range(start_date, end_date, freq="h")
     
+    
+    pc_filter_unimputed = pc_filter.reindex(common_index)
     #print(station_nam)
     #print("sm")
     sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
@@ -102,12 +105,12 @@ def station_filtered(station_nam):
     #sm_filter = sm_filter.resample("D").mean()
     #pc_filter = pc_filter.resample("D").sum()
 
-    return sm_filter, pc_filter, lon, lat, n_sm, n_pc
+    return sm_filter, pc_filter, pc_filter_unimputed, lon, lat, n_sm, n_pc
 
    
 #sm, pc, lon, lat = station_filtered(station_nam)
 
-def align_timestamps(sm, pc):
+def align_timestamps(sm, pc, pc_unimputed):
 
     start_date = sm.index.min()  # start at first sm entry because we need pc from the next day
     end_date = pc.index.max()
@@ -121,14 +124,16 @@ def align_timestamps(sm, pc):
     sm_synced = sm.reindex(common_index_sm)
     pc_synced = pc.reindex(common_index_pc)
     sm = sm.reindex(common_index_pc) # measured sm for pc timeframe to compare to predictions later
+    pc_unimputed_synced = pc_unimputed.reindex(common_index_pc)
 
     sm_aligned = sm_synced.values
     pc_aligned = pc_synced.values# / 1000 # mm to m
+    pc_unimputed_aligned = pc_unimputed_synced.values
     
     #sm_aligned = imput_missing(sm_aligned)
     #pc_aligned = imput_missing(pc_aligned)
 
-    df_aligned = pd.DataFrame({"sm": sm.values, "sm_t_minus_1": sm_aligned, "pc_t": pc_aligned}, index=common_index_pc)
+    df_aligned = pd.DataFrame({"sm": sm.values, "sm_t_minus_1": sm_aligned, "pc_t": pc_aligned, "pc_unimputed": pc_unimputed_aligned}, index=common_index_pc)
 
     return df_aligned
     #i9=0
@@ -178,8 +183,8 @@ def optimize_lam(sm, pc):
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
     print(station_nam)
-    sm, pc, lon, lat, n_sm, n_pc = station_filtered(station_nam)
-    df_aligned = align_timestamps(sm, pc)
+    sm, pc, pc_unimputed, lon, lat, n_sm, n_pc = station_filtered(station_nam)
+    df_aligned = align_timestamps(sm, pc, pc_unimputed)
 
     def error_function(lam, sm, pc):
         pc_rescaled = rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
@@ -412,12 +417,14 @@ gl.right_labels = False
 # plt.tight_layout()
 # plt.show()
 
+
+
 #%%
 # for chosen station set percentage of pc values to nan artifically
 
 station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
 df_1, df_2 = sm_prediction(station_nam)
-ds_pc = df_1['pc_t']
+ds_pc = df_1['pc_unimputed']
 
 percentage = [10, 20, 30, 50, 70]
 ds_del_l = []
@@ -427,12 +434,13 @@ for perc in percentage:
     factor = int((len(ds_pc)*perc)/100)
     ds_sample = ds_del.sample(factor)
     ds_del.loc[ds_sample.index] = np.nan
-    #print(ds_del.isnull().sum()/len(ds_del)) # to verify
+    print(ds_del.isnull().sum()/len(ds_del)) # to verify
     ds_del_l.append(ds_del)
 
 # create df with all different NaN percentages
 df_del = pd.concat([ds for ds in ds_del_l], axis=1)
 df_del.columns =[f'{str(perc)}% NaN' for perc in percentage]
+
 
 #%%
 
@@ -556,6 +564,31 @@ NANDTR_MAE , NANDTR_MSE , NANDTR_R2_sc = acc_chk(y_tst , yhat_NANDTR)
 print('DTR Model Train Score is : ' , DTR.score(X_trn, y_trn))
 print('DTR Model Test Score is  : ' , DTR.score(X_tst, y_tst))
 
+#%%
+# different ML strategy: 
+# KNN Imputer
+from sklearn.impute import KNNImputer
+
+def refill_kNN(ds):   
+
+    df = ds.to_frame()
+    
+    # Create an instance of KNNImputer with desired number of neighbors
+    imputer = KNNImputer(n_neighbors=2)
+    
+    # Fit the imputer and transform the DataFrame
+    imputed_ds = pd.DataFrame(imputer.fit_transform(df), columns=df.columns, index=ds.index)
+    
+    return imputed_ds
+
+ds_kNN_refilled_l = []
+for column in df_del.columns:
+    ds_kNN_refilled_l.append(refill_kNN(df_del[column]))
+
+# df with all gamma refilled series
+df_kNN_refilled = pd.concat([ds for ds in ds_kNN_refilled_l], axis=1)
+df_kNN_refilled.plot()
+
 
 #%%
 # 3. set to 0
@@ -568,10 +601,61 @@ ds_0_refilled_l = []
 for column in df_del.columns:
     ds_0_refilled_l.append(refill_0(df_del[column]))
 
-# df with all gamma refilled series
+# df with all 0 refilled series
 df_0_refilled = pd.concat([ds for ds in ds_0_refilled_l], axis=1)
-#df_0_refilled.plot()
+df_0_refilled.plot()
+
+
+#%%
+# change sm_prediction function to use on refilled pc dataframes
+# Function to optimise loss factor and calculate predictions in one step
+def sm_prediction_2(df_aligned, ds_refilled):
     
+    def error_function(lam, sm, pc):
+        pc_rescaled = rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
+        sm_pred = sm * lam + pc_rescaled
+        return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
+
+    initial_guess = 0.5 # most lamda stay at 0.5 if initial guess
+    result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], ds_refilled), bounds=[(0, 1)])
+    lam = result.x[0]
+    
+
+    sm_pred = []
+
+    for i, sm in enumerate(df_aligned["sm_t_minus_1"]):
+         if i == 0:
+             pred = 0 # mit 0 anfangen als Startwert
+             sm_pred.append(pred)
+         else:
+             pred = sm_pred[-1] * lam + df_aligned["pc_t"].iloc[i]
+             sm_pred.append(pred)
+
+    sm_pred = np.array(sm_pred)
+    
+    df_aligned_2 = df_aligned.copy()
+    df_aligned_2['sm_pred'] = sm_pred
+
+    corr_pearson = pearsonr(df_aligned_2["sm"], sm_pred)
+    corr_spearman = spearmanr(df_aligned_2["sm"], sm_pred)
+    #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #unten mit rescaled
+
+    rescaled_sm = rescale_sm(df_aligned_2["sm"].values, df_aligned_2["sm_pred"].values)
+    
+    rmse = np.sqrt(np.mean((rescaled_sm - df_aligned_2["sm"].values)**2))
+    
+    df_aligned_2["sm_pred_rescaled"] = rescaled_sm
+    
+    df_stations = pd.DataFrame({"station": [station_nam], "lamda": [lam], "pearson": [corr_pearson], "spearman": [corr_spearman], "rmse": [rmse],
+                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned_2["sm_pred"].values], "sm": [df_aligned_2["sm"].values]})
+
+    return df_aligned, df_stations
+
+#%%
+# predict sm with refilled pc dataframes and get correlations
+
+df_1_2, df_2_2 = sm_prediction_2(df_1, df_0_refilled["10% NaN"])
+df_2_2["spearman"][0]
 
 
 
