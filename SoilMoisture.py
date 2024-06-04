@@ -174,7 +174,7 @@ def optimize_lam(sm, pc):
     max_corr = 0
     for lam in np.arange(0, 1.01, 0.01):
         sm_pred = sm * lam + pc
-        corr = pearsonr(sm_pred, sm)[0]
+        corr = spearmanr(sm_pred, sm)[0]
         if corr > max_corr:
             max_corr = corr
             optimized_lam = lam
@@ -192,8 +192,8 @@ def sm_prediction(station_nam):
         return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
         #return (1 - (spearmanr(sm_pred, sm)[0]))
 
-    initial_guess = 0.5 # most lamda stay at 0.5 if initial guess
-    result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)])
+    initial_guess = 0.3 # most lamda stay at 0.5 if initial guess
+    result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0.5, 1)])
     lam = result.x[0]
     
     # test with other methods, results always in lam=initial guess or lam=1 (or lam >> 1 when bounds don't work for method)
@@ -252,7 +252,7 @@ ax3.plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
 
 ax3_2 = ax3.twinx()
-ax3_2.plot(df_1.index, df_1.sm*100*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax3_2.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax3_2.set_ylabel("m³/m³ * 100")
 ax3_2.plot(df_1.index, df_1.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
 #ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
@@ -269,6 +269,8 @@ ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), l
 plt.grid(alpha=0.4)
 plt.tight_layout()
 #plt.show()
+
+
 
 #%%
 #Plot for one year:
@@ -359,7 +361,7 @@ for station in stations:
 print(min(result['lamda']))
 print(max(result['lamda']))
 print(np.median(result['lamda']))
-
+#%%
 # find and compare two stations with different lamda
 
 low_lamda = result.loc[result["n_sm"] > 10000]
@@ -562,7 +564,6 @@ for perc in percentage:
 df_del = pd.concat([ds for ds in ds_del_l], axis=1)
 df_del.columns =[f'{str(perc)}% NaN' for perc in percentage]
 
-
 #%%
 
 # refill nan values in 3 different ways:
@@ -598,95 +599,6 @@ df_gamma_refilled.plot()
 
 #%%
 # 2. machine learning
-
-from sklearn import metrics
-from sklearn.linear_model import LinearRegression
-from sklearn.svm import SVR
-from sklearn.tree import DecisionTreeRegressor
-
-ds_sm = df_1['sm']
-
-ds_y = df_del['10% NaN'].copy()
-NAN_indices = ds_y[ds_y.isnull()].index
-ds_x = ds_sm.copy()
-
-
-# Training Data
-y_trn = ds_y.drop(NAN_indices , axis=0).copy()
-X_trn = ds_x.drop(NAN_indices , axis=0).copy()
-
-# Testing Data
-y_tst = ds_pc.loc[NAN_indices]      # y_tst are the original data
-X_tst = ds_x.loc[NAN_indices]
-
-print('Training set shape : ', X_trn.shape)
-print('Testing set shape : ', X_tst.shape)
-
-# Convert Training and Testing dataframes to arrays to make them ready for modeling
-X_trn = X_trn.to_numpy().reshape(-1,1)
-y_trn = y_trn.to_numpy().reshape(-1,1)
-X_tst = X_tst.to_numpy().reshape(-1,1)
-y_tst = y_tst.to_numpy().reshape(-1,1)
-
-# function to check accuracy
-def acc_chk (y_tst , y_hat):
-    # Mean absolute error
-    MAE = metrics.mean_absolute_error(y_tst ,y_hat)
-    
-    # Mean Suared Error (MSE)
-    MSE = metrics.mean_squared_error(y_tst ,y_hat)
-    
-    # R2-score
-    R2_sc = metrics.r2_score(y_tst ,y_hat)
-    
-    print("Mean absolute error: %.2f" % MAE)
-    print("Mean Squared Error : %.2f" % MSE)
-    print("R2-score           : %.2f" % R2_sc )
-    
-    return MAE , MSE , R2_sc
-
-# Linear Regression
-
-LR = LinearRegression(fit_intercept=True,copy_X=True,n_jobs=-1)
-LR.fit(X_trn ,y_trn)
-yhat_NANLR = LR.predict(X_tst)
-
-print ('Accuracy scores for filling NAN with Linear Regression model are:')
-NANLR_MAE , NANLR_MSE , NANLR_R2_sc = acc_chk(y_tst , yhat_NANLR)
-
-print('LR Model Train Score is : ' , LR.score(X_trn, y_trn))
-print('LR Model Test Score is : ' , LR.score(X_tst, y_tst))
-
-
-# Support Vector Regressor
-
-SVR = SVR(C = 1.0 ,epsilon=0.1,kernel = 'rbf') # it also can be : linear, poly, rbf, sigmoid, precomputed
-SVR.fit(X_trn, y_trn)
-
-yhat_NANSVR = LR.predict(X_tst)
-
-print ('Accuracy scores for filling NAN with Support Vector Regressor model are:')
-NANSVR_MAE , NANSVR_MSE , NANSVR_R2_sc = acc_chk(y_tst , yhat_NANSVR)
-
-print('SVR Model Train Score is : ' , SVR.score(X_trn, y_trn))
-print('SVR Model Test Score is  : ' , SVR.score(X_tst, y_tst))
-
-
-# Decision Tree Regressor
-
-DTR = DecisionTreeRegressor( max_depth=3)
-DTR.fit(X_trn, y_trn)
-
-yhat_NANDTR = DTR.predict(X_tst)
-
-print ('Accuracy scores for filling NAN with Decision Tree Regressor model are:')
-NANDTR_MAE , NANDTR_MSE , NANDTR_R2_sc = acc_chk(y_tst , yhat_NANDTR)
-
-print('DTR Model Train Score is : ' , DTR.score(X_trn, y_trn))
-print('DTR Model Test Score is  : ' , DTR.score(X_tst, y_tst))
-
-#%%
-# different ML strategy: 
 # KNN Imputer
 from sklearn.impute import KNNImputer
 
@@ -768,12 +680,13 @@ def sm_prediction_2(df_aligned, ds_refilled):
     df_aligned_2["sm_pred_rescaled"] = rescaled_sm
     
     df_stations = pd.DataFrame({"station": [station_nam], "lamda": [lam], "pearson": [corr_pearson], "spearman": [corr_spearman], "rmse": [rmse],
-                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned_2["sm_pred"].values], "sm": [df_aligned_2["sm"].values]})
+                               "sm_pred_rescaled": rescaled_sm, "sm_pred": df_aligned_2["sm_pred"].values, "sm": df_aligned_2["sm"].values}, index=df_1.index)
 
     return df_aligned, df_stations
 
 #%%
 # predict sm with refilled pc dataframes and get correlations
+# almost no difference in correlations
 
 corr_gamma_l, corr_kNN_l, corr_0_l = [], [], []
 columns = df_gamma_refilled.columns
@@ -791,11 +704,11 @@ for column in columns:
     corr = df_2_2["spearman"][0][0]
     corr_0_l.append(round(corr, 3))
 
-#drop pvalue in dfs
+
 corr_gamma = pd.DataFrame([corr_gamma_l], columns=columns)
 corr_kNN = pd.DataFrame([corr_kNN_l], columns=columns)
 corr_0 = pd.DataFrame([corr_0_l], columns=columns)
-
+df_2_2
 #%%
 
 # spearman correlation of original and refilled values
@@ -817,6 +730,25 @@ for column in columns:
 corr_gamma_2 = pd.DataFrame([corr_gamma_l2], columns=columns)
 corr_kNN_2 = pd.DataFrame([corr_kNN_l2], columns=columns)
 corr_0_2 = pd.DataFrame([corr_0_l2], columns=columns)
+
+#%%
+# corr of original pc values and with refilled pc values predicted sm 
+# almost no difference in correlations
+
+corr_gamma_l3, corr_kNN_l3, corr_0_l3 = [], [], []
+
+for column in columns:
+    df_2_2 = sm_prediction_2(df_1, df_gamma_refilled[column])[1]
+    corr = spearmanr(ds_pc[mask_valid], df_2_2["sm_pred"][mask_valid])[0]
+    corr_gamma_l3.append(round(corr, 3))
+
+    df_2_2 = sm_prediction_2(df_1, df_kNN_refilled[column])[1]
+    corr = spearmanr(ds_pc[mask_valid], df_2_2["sm_pred"][mask_valid])[0]
+    corr_kNN_l3.append(round(corr, 3))
+    
+    df_2_2 = sm_prediction_2(df_1, df_0_refilled[column])[1]
+    corr = spearmanr(ds_pc[mask_valid], df_2_2["sm_pred"][mask_valid])[0]
+    corr_0_l3.append(round(corr, 3))
 
 
 #%%
