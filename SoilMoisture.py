@@ -754,7 +754,6 @@ for column in columns:
 #%%
 
 # spearman correlation of only deleted original and refilled values
-# correlation coeff == nan -> why?
 
 corr_gamma_l4, corr_kNN_l4, corr_0_l4 = [], [], []
 
@@ -928,4 +927,57 @@ def sm_prediction_syn(station_nam):
 # soil moisture from synthetic precipitation
 df_1_syn, df_2_syn = sm_prediction_syn(station_nam)
 
+#%%
 
+#plot sm and sm_predict (after synthetic precipitation):
+fig2, ax3 = plt.subplots(figsize=(12,4))
+
+#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
+#ax3.plot(df_1_syn.index, df_1_syn.pc_t, label='Precipitation [mm]', c="blue")
+ax3.set_ylabel("mm")
+
+ax3_2 = ax3.twinx()
+#ax3_2.plot(df_1_syn.index, df_1_syn.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax3_2.set_ylabel("m³/m³ * 100")
+ax3_2.plot(df_1_syn.index, df_1_syn.sm_pred_rescaled, label='Soil Moisture Prediction with\nSynthetic Precipitation [m³/m³ * 100]', c="darkorange")
+ax3_2.plot(df_1_syn.index, df_1_syn.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+#ax3_2.plot(df_1_syn.index, df_1_syn.pc_t, label='Precipitation [mm]', c="blue", alpha=0.5)
+#ax3_2.set_ylabel("mm")
+
+ax3.set_title("Station: " + station_nam)
+
+lines_1, labels_1 = ax3.get_legend_handles_labels()
+lines_2, labels_2 = ax3_2.get_legend_handles_labels()
+ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
+
+#plt.legend(loc='best')
+plt.grid(alpha=0.4)
+plt.tight_layout()
+#plt.show()
+
+#%%
+# plot histograms for measured and synthetic sm
+
+sm_syn = df_1_syn['sm_pred_rescaled']
+sm_measured = df_1_syn['sm']
+
+n_bins = 100
+
+fig = plt.figure(figsize=(10, 5))
+
+ax1 = plt.subplot(121)
+ax1.hist(sm_measured, bins=n_bins)
+ax1.set_title('Measured')
+ax1.set_xlim(0,0.8)
+ax1.set_xlabel('soil moisture [m³/m³ * 100]')
+ax1.set_ylabel('frequency')
+
+ax2 = plt.subplot(1,2,2)
+ax2.hist(sm_syn, bins=n_bins)
+ax2.set_title('Predicted after Synthetic Precipitation')
+ax2.set_xlim(0,0.8)
+ax2.set_xlabel('soil moisture [m³/m³ * 100]')
+ax2.set_ylabel('frequency')
+
+plt.tight_layout()
+plt.show()
