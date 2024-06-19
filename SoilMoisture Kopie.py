@@ -550,8 +550,7 @@ station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019
 df_1, df_2 = sm_prediction(station_nam)
 ds_pc = df_1['pc_unimputed']
 
-#percentage = [10, 20, 30, 50, 70]
-percentage = range(10,100,10)
+percentage = [10, 20, 30, 50, 70]
 ds_del_l = []
 
 for perc in percentage:
@@ -714,7 +713,7 @@ corr_0 = pd.DataFrame([corr_0_l], columns=columns)
 #%%
 
 # spearman correlation of original and refilled values
-columns = df_gamma_refilled.columns
+
 corr_gamma_l2, corr_kNN_l2, corr_0_l2 = [], [], []
 mask_valid = ds_pc.notnull()
 
@@ -783,36 +782,15 @@ fig, ax = plt.subplots(figsize=(8, 5))
 x = np.arange(len(columns))  # the label locations
 width = 0.25  # the width of the bars
 
-ax.bar(x - width, corr_gamma_l2, width, label='gamma distribution', color='turquoise')
-ax.bar(x, corr_kNN_l2, width, label='kNN Imputer', color='royalblue')
-ax.bar(x + width, corr_0_l2, width, label='0', color='purple')
+ax.bar(x - width, corr_gamma_l4, width, label='gamma distribution', color='turquoise')
+ax.bar(x, corr_kNN_l4, width, label='kNN Imputer', color='royalblue')
+ax.bar(x + width, corr_0_l4, width, label='0', color='purple')
 
 ax.set_ylabel('correlation coefficient')
 ax.set_title('spearman correlation of original and refilled values')
 ax.set_xticks(x, columns)
 ax.set_yticks(np.arange(0,1.1,0.1))
 ax.legend(title='NaN values refilled by')
-
-#%%
-# plot line diagramm
-
-fig, ax = plt.subplots(figsize=(8, 5))
-
-x = range(10,100,10) # the label locations
-
-ax.plot(x, corr_gamma_l2, color='turquoise', linewidth=0.7)
-ax.scatter(x, corr_gamma_l2, label='gamma distribution', color='turquoise', marker='D')
-ax.plot(x, corr_kNN_l2, color='royalblue', linewidth=0.7)
-ax.scatter(x, corr_kNN_l2, label='kNN Imputer', color='royalblue', marker='D')
-ax.plot(x, corr_0_l2, color='purple', linewidth=0.7)
-ax.scatter(x, corr_0_l2, label='0', color='purple', marker='D')
-
-ax.set_ylabel('correlation coefficient')
-ax.set_xlabel('percentage of refilled values')
-ax.set_title('spearman correlation of original and refilled values')
-ax.set_yticks(np.arange(0,1.1,0.1))
-ax.legend(title='values refilled by')
-plt.grid(linewidth=0.5)
 
 #%%
 # create synthetic precipitation
