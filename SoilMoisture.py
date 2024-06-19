@@ -981,3 +981,15 @@ ax2.set_ylabel('frequency')
 
 plt.tight_layout()
 plt.show()
+
+#%%
+# duration line of meaured and predicted sm (from synthetic pc)
+
+sm_syn_sorted = sm_syn.sort_values()
+sm_measured_sorted = sm_measured.sort_values()
+
+fig, ax = plt.subplots()
+x = np.arange(len(sm_syn))
+ax.plot(x, sm_measured_sorted.values, label='measured')
+ax.plot(x, sm_syn_sorted.values, label='predicted with synthetic precipitation')
+ax.legend()
