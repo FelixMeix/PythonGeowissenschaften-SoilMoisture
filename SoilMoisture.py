@@ -16,9 +16,9 @@ get_ipython().run_line_magic('matplotlib', 'inline')
 # Felix
 #path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
 # Bettina
-#path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
+path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -39,7 +39,7 @@ station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019
 #%%
 
 # function to imput missing data based on Gamma distribution
-def imput_missing(data):
+def imput_missing(data, plott=False):
     n_missing = np.sum(np.isnan(data))
     mask = np.isnan(data)
     
@@ -57,10 +57,11 @@ def imput_missing(data):
     
     #plt.hist(data, bins=100, density=True, alpha=0.6, color='g', label='Data')
 
-    # # Plot the PDF of the fitted gamma distribution
-    #x = np.linspace(0, data.max(), 100)
-    #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
-    #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
+    if plott:
+            # # Plot the PDF of the fitted gamma distribution
+            x = np.linspace(0, data.max(), 100)
+            pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+            plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
     return data_imputed, n
 
@@ -84,10 +85,10 @@ def station_filtered(station_nam):
     lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
     #if number not as the first entry: use filter np.array(df_2["lon"].values[0][0])[np.array(df_2["lon"].values[0][0]) != None][0] .values[0][0][0]
 
-    pc_insight = sensor_pc.data.precipitation
+    #pc_insight = sensor_pc.data.precipitation
     
     sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
-    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0][sensor_pc.data.precipitation < 100]
+    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
     
     # imput missing hourly values
     start_date = sm_filter.index.min()
@@ -105,38 +106,42 @@ def station_filtered(station_nam):
     
     #sm_filter = sm_filter.resample("D").mean()
     #pc_filter = pc_filter.resample("D").sum()
+    
+    df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
 
-    return sm_filter, pc_filter, pc_filter_unimputed, lon, lat, n_sm, n_pc
+    #return sm_filter, pc_filter, pc_filter_unimputed, lon, lat, n_sm, n_pc
+    return df_filter, lon, lat, n_sm, n_pc
+
 
    
 #sm, pc, lon, lat = station_filtered(station_nam)
 
-def align_timestamps(sm, pc, pc_unimputed):
+# def align_timestamps(sm, pc, pc_unimputed):
 
-    start_date = sm.index.min()  # start at first sm entry because we need pc from the next day
-    end_date = pc.index.max()
+#     start_date = sm.index.min()  # start at first sm entry because we need pc from the next day
+#     end_date = pc.index.max()
 
-    #common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(days=1))
-    #common_index_pc = pd.date_range(start_date + pd.Timedelta(days=1), end_date)
+#     #common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(days=1))
+#     #common_index_pc = pd.date_range(start_date + pd.Timedelta(days=1), end_date)
 
-    common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(hours=1), freq='H')
-    common_index_pc = pd.date_range(start_date + pd.Timedelta(hours=1), end_date, freq='H')
+#     common_index_sm = pd.date_range(start_date, end_date - pd.Timedelta(hours=1), freq='H')
+#     common_index_pc = pd.date_range(start_date + pd.Timedelta(hours=1), end_date, freq='H')
 
-    sm_synced = sm.reindex(common_index_sm)
-    pc_synced = pc.reindex(common_index_pc)
-    sm = sm.reindex(common_index_pc) # measured sm for pc timeframe to compare to predictions later
-    pc_unimputed_synced = pc_unimputed.reindex(common_index_pc)
+#     sm_synced = sm.reindex(common_index_sm)
+#     pc_synced = pc.reindex(common_index_pc)
+#     sm = sm.reindex(common_index_pc) # measured sm for pc timeframe to compare to predictions later
+#     pc_unimputed_synced = pc_unimputed.reindex(common_index_pc)
 
-    sm_aligned = sm_synced.values
-    pc_aligned = pc_synced.values# / 1000 # mm to m
-    pc_unimputed_aligned = pc_unimputed_synced.values
+#     sm_aligned = sm_synced.values
+#     pc_aligned = pc_synced.values# / 1000 # mm to m
+#     pc_unimputed_aligned = pc_unimputed_synced.values
     
-    #sm_aligned = imput_missing(sm_aligned)
-    #pc_aligned = imput_missing(pc_aligned)
+#     #sm_aligned = imput_missing(sm_aligned)
+#     #pc_aligned = imput_missing(pc_aligned)
 
-    df_aligned = pd.DataFrame({"sm": sm.values, "sm_t_minus_1": sm_aligned, "pc_t": pc_aligned, "pc_unimputed": pc_unimputed_aligned}, index=common_index_pc)
+#     df_aligned = pd.DataFrame({"sm": sm.values, "sm_t_minus_1": sm_aligned, "pc_t": pc_aligned, "pc_unimputed": pc_unimputed_aligned}, index=common_index_pc)
 
-    return df_aligned
+#     return df_aligned
     #i9=0
 #plot the original timeseries:
 # fig, ax1 = plt.subplots(figsize=(12,4))
@@ -174,28 +179,47 @@ def rescale_sm(sm, sm_pred):
 def optimize_lam(sm, pc):
     max_corr = 0
     for lam in np.arange(0, 1.01, 0.01):
-        sm_pred = sm * lam + pc
+        sm_pred = api(pc,lam)
         corr = spearmanr(sm_pred, sm)[0]
         if corr > max_corr:
             max_corr = corr
             optimized_lam = lam
     return optimized_lam
 
+# api function
+def api(prec, lam):
+    sm_pred = [0]
+
+    for i in range(len(prec)-1):
+        pred = sm_pred[-1] * lam + prec[i+1]
+        sm_pred.append(pred)
+
+    #sm_pred = np.array(sm_pred)
+    return np.array(sm_pred)
+
+# loss function
+#pc = df_filter["pc"]
+#sm = df_filter["sm"]
+def loss(lam, sm, pc):
+    sm_pred = api(pc, lam[0])
+    sm_pred = np.array(sm_pred)
+    sm = np.array(sm)
+    correlation = spearmanr(sm_pred, sm)[0]
+    return 1 - correlation
+
 # Function to optimise loss factor and calculate predictions in one step
 def sm_prediction(station_nam):
     print(station_nam)
-    sm, pc, pc_unimputed, lon, lat, n_sm, n_pc = station_filtered(station_nam)
-    df_aligned = align_timestamps(sm, pc, pc_unimputed)
+    #sm, pc, pc_unimputed, lon, lat, n_sm, n_pc = station_filtered(station_nam)
+    df_filter, lon, lat, n_sm, n_pc = station_filtered(station_nam)
+    pc = df_filter["pc"].values
+    sm = df_filter["sm"].values
+    #df_aligned = align_timestamps(sm, pc, pc_unimputed)
 
-    def error_function(lam, sm, pc):
-        pc_rescaled = rescale_sm(sm, pc) #rescale precipitation to  m^3/(m^3*100) to avoid unit problem
-        sm_pred = sm * lam + pc_rescaled
-        return np.sqrt(np.mean((sm_pred - sm) ** 2)) # does not work bc unit-dependent
-        #return (1 - (spearmanr(sm_pred, sm)[0]))
-
-    initial_guess = 0.3 # most lamda stay at 0.5 if initial guess
-    result = minimize(error_function, initial_guess, args=(df_aligned["sm_t_minus_1"], df_aligned["pc_t"]), bounds=[(0, 1)])
-    lam = result.x[0]
+    initial_guess = [0.8] # expecting high values for lamda (hourly changes)
+    result = minimize(loss, initial_guess, args=(sm, pc), bounds=[(0, 1)], method="Nelder-Mead")
+    lam_opt = result.x[0]
+    print(lam_opt)
     
     # test with other methods, results always in lam=initial guess or lam=1 (or lam >> 1 when bounds don't work for method)
     #lam_l = []
@@ -207,37 +231,38 @@ def sm_prediction(station_nam):
     
     #lam = optimize_lam(df_aligned["sm_t_minus_1"], df_aligned["pc_t"])
 
-    sm_pred = []
+    # sm_pred = []
 
-    for i, sm in enumerate(df_aligned["sm_t_minus_1"]):
-         if i == 0:
-             #pred = df_aligned["sm_t_minus_1"][i] * lam + df_aligned["pc_t"][i]
-             pred = 0 # mit 0 anfangen als Startwert
-             sm_pred.append(pred)
-         else:
-             pred = sm_pred[-1] * lam + df_aligned["pc_t"].iloc[i]
-             sm_pred.append(pred)
+    # for i, sm in enumerate(df_aligned["sm_t_minus_1"]):
+    #      if i == 0:
+    #          #pred = df_aligned["sm_t_minus_1"][i] * lam + df_aligned["pc_t"][i]
+    #          pred = 0 # mit 0 anfangen als Startwert
+    #          sm_pred.append(pred)
+    #      else:
+    #          pred = sm_pred[-1] * lam + df_aligned["pc_t"].iloc[i]
+    #          sm_pred.append(pred)
 
-    sm_pred = np.array(sm_pred)
+    # sm_pred = np.array(sm_pred)
 
     #sm_pred = df_aligned["sm_t_minus_1"] * lam + df_aligned["pc_t"]
-    df_aligned['sm_pred'] = sm_pred
+    sm_pred = api(df_filter["pc"], lam_opt)
+    df_filter['sm_pred'] = sm_pred
 
-    corr_pearson = pearsonr(df_aligned["sm"], sm_pred)
-    corr_spearman = spearmanr(df_aligned["sm"], sm_pred)
+    corr_pearson = pearsonr(df_filter["sm"], sm_pred)
+    corr_spearman = spearmanr(df_filter["sm"], sm_pred)
     #rmse = np.sqrt(np.mean((sm_pred - df_aligned["sm"])**2)) #unten mit rescaled
 
-    rescaled_sm = rescale_sm(df_aligned["sm"].values, df_aligned["sm_pred"].values)
+    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
     
-    rmse = np.sqrt(np.mean((rescaled_sm - df_aligned["sm"].values)**2))
+    rmse = np.sqrt(np.mean((rescaled_sm - df_filter["sm"].values)**2))
     
-    df_aligned["sm_pred_rescaled"] = rescaled_sm
+    df_filter["sm_pred_rescaled"] = rescaled_sm
     
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
-                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_aligned["sm_pred"].values], "sm": [df_aligned["sm"].values]})
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam_opt], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
+                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_filter["sm_pred"].values], "sm": [df_filter["sm"].values]})
 
 
-    return df_aligned, df_stations
+    return df_filter, df_stations
 
 #%%
 
@@ -249,7 +274,7 @@ df_1, df_2 = sm_prediction(station_nam)
 fig2, ax3 = plt.subplots(figsize=(12,4))
 
 #ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
-ax3.plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="blue")
+ax3.plot(df_1.index, df_1.pc, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
 
 ax3_2 = ax3.twinx()
@@ -266,7 +291,7 @@ lines_1, labels_1 = ax3.get_legend_handles_labels()
 lines_2, labels_2 = ax3_2.get_legend_handles_labels()
 ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
 
-#plt.legend(loc='best')
+plt.legend(loc='best')
 plt.grid(alpha=0.4)
 plt.tight_layout()
 #plt.show()
@@ -281,13 +306,14 @@ fig4, ax4 = plt.subplots(figsize=(12,4))
 df_1_isel = df_1.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
 
 #ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
-ax4.plot(df_1_isel.index, df_1_isel.pc_t, label='Precipitation [mm]', c="blue")
+ax4.plot(df_1_isel.index, df_1_isel.pc, label='Precipitation', c="blue")
 ax4.set_ylabel("mm")
 
+
 ax4_2 = ax4.twinx()
-ax4_2.plot(df_1_isel.index, df_1_isel.sm*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm*100, label='Soil Moisture Measured', c="green")
 ax4_2.set_ylabel("m³/m³ * 100")
-ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction', c="red")
 #ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
 
 #ax3_2.set_ylabel("mm")
@@ -298,7 +324,7 @@ lines_1, labels_1 = ax4.get_legend_handles_labels()
 lines_2, labels_2 = ax4_2.get_legend_handles_labels()
 ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
 
-#plt.legend(loc='best')
+#plt.legend()
 plt.grid(alpha=0.4)
 plt.tight_layout()
 plt.show()
@@ -379,38 +405,40 @@ lat_south = 23
 lon_west = -120
 lon_east = -75
 
-fig = plt.figure(figsize=(10, 6))#, subplot_kw={'projection': ccrs.LambertConformal()})
-
+fig = plt.figure(figsize=(10, 6))
 ax = plt.axes(projection=ccrs.LambertConformal())
+
+# Set extent and add features
 ax.set_extent([lon_west, lon_east, lat_south, lat_north])
 ax.add_feature(cfeature.COASTLINE)
 ax.add_feature(cfeature.STATES)
 ax.add_feature(cfeature.LAND)
 ax.add_feature(cfeature.OCEAN)
+ax.add_feature(cfeature.LAKES)
 
-#sc = ax.scatter(subresult["lon"], subresult["lat"], transform=ccrs.PlateCarree(), color="red", ec="k", s=10) #, label="SCAN", edgecolors="k"
-
+# Set title
 ax.set_title("Two stations with highest and lowest lamda")
 
-station = low_lamda
+# Plotting and annotating
 for station in [low_lamda, high_lamda]:
-    res = result.loc[result["station"].isin([station])]
-    ax.plot(res['lon'], res['lat'], 'ro', transform=ccrs.PlateCarree())
+    res = result.loc[result["station"] == station]
+    ax.plot(res['lon'], res['lat'], 'ro', transform=ccrs.PlateCarree(), markersize=15)
     ax.annotate(
-        f"Station: {station}\n loss factor: {round(float(res['lamda']),2)}\n spearman: {round(float(res['corr_coef']),2)}\n rmse: {round(float(res['rmse']),2)}\n n sm: {int(res['n_sm'])}",
-        xy=(res['lon'], res['lat']),
-        xycoords= ccrs.LambertConformal()._as_mpl_transform(ax),
-        xytext=(10,10),
+        f"Station: {station}\nloss factor: {round(float(res['lamda']), 2)}\nspearman: {round(float(res['spearman'].iloc[0][0]), 2)}\nrmse: {round(float(res['rmse']), 2)}\nn sm: {int(res['n_sm'])}",
+        xy=(res['lon'].values[0], res['lat'].values[0]),
+        xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
+        xytext=(20, -20),
         textcoords='offset points',
         arrowprops=dict(facecolor='black', shrink=0.05),
-        bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='wheat', alpha=0.5)
-        )
-    #plt.text(res["lon"], res["lat"], f"Station: {station}\n loss factor: {round(float(res['lamda']),2)}\n spearman: {round(float(res['corr_coef']),2)}\n rmse: {round(float(res['rmse']),2)}\n n sm: {int(res['n_sm'])}",
-     #        horizontalalignment="left", transform=ccrs.PlateCarree())
+        bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='lightpink')#, alpha=0.7
+    )
 
-gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
+# Adding gridlines
+gl = ax.gridlines(draw_labels=True, x_inline=False, y_inline=False, alpha=0.5, linestyle="--")
 gl.top_labels = False
 gl.right_labels = False
+
+plt.show()
 
 plt.savefig("high_low_lamda_cartopy.jpg", dpi=300)
 
@@ -424,7 +452,7 @@ for i,station_nam in enumerate([low_lamda, high_lamda]):
     
     ax[i].plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [mm]', c="green")
     ax[i].set_ylabel("mm")
-    ax[i].plot(df_1.index, df_1.pc_t, label='Precipitation [mm]', c="red", linewidth=0.5, linestyle="--")
+    ax[i].plot(df_1.index, df_1.pc, label='Precipitation [mm]', c="red", linewidth=0.5, linestyle="--")
     
     ax[i].set_title("Station: " + station_nam + f"\n lamda = {round(float(df_2['lamda']),4)}")
 
@@ -437,12 +465,12 @@ plt.savefig("high_low_lamda_prec_sm_mm.jpg", dpi=300)
 
 #%%
 ###
+import matplotlib.lines as mlines
 result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
 
 # cartopy plot for correlation  #added number of measurements as size
 
 fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
-
 
 ax.set_extent([lon_west, lon_east, lat_south, lat_north])
 ax.add_feature(cfeature.COASTLINE)
@@ -455,6 +483,16 @@ sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(),
                 ec="k") #, label="SCAN", edgecolors="k"
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
+
+sizes = [1000, 10000, 100000]*1000  # Example sizes
+labels = ['1000', '10000','100000']  # Corresponding labels
+handles = [mlines.Line2D([], [], color='w', marker='o', markersize=np.sqrt(size/1000), 
+                         markerfacecolor='gray', markeredgecolor='k', label=label) 
+           for size, label in zip(sizes, labels)]
+
+#ax.legend(handles=handles, title='Number of measurements', loc='lower right', frameon=True)
+legend = ax.legend(handles=handles, title='Number of measurements', loc='upper left', frameon=True, bbox_to_anchor=(1, 0.2))
+
 
 plt.title("Spearman: Measured Soil Moisture and Predicted Soil Moisture \n scaled after number of available measurements")
 #plt.suptitle("scaled after number of available measurements", y=1)
@@ -509,7 +547,7 @@ plt.savefig("RMSE_cartopy.jpg", dpi=300)
 
 fig, ax = plt.subplots(figsize=(12,4))
 
-ax.hist(result["lamda"], ec="k", fc="lightblue", bins=20, density=False, cumulative=False)
+ax.hist(result["lamda"], ec="k", fc="lightblue", bins=40, density=False, cumulative=False)
 ax.set_ylabel("absolute frequency")
 ax.set_xlabel("loss coefficient lamda")
 
