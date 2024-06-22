@@ -48,7 +48,7 @@ def imput_missing(data, plott=False):
 
     available = data[~mask]
     #print("n_missing: ",n_missing)
-    print('n_missing [%]:', round((n_missing/len(data))*100,2))
+    print('n_missing[%]:', round((n_missing/len(data))*100,2))
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     #loc, scale = expon.fit(available)
@@ -66,54 +66,6 @@ def imput_missing(data, plott=False):
             plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
     return data_imputed, n
-
-# function to select sensors and filter data
-def station_filtered(station_nam):
-
-    station = ismn_data['SCAN'][station_nam]
-    
-    sens = station.sensors
-    
-    target_string = "precipitation"
-    prec_sensor = [sensor for sensor in sens if target_string in sensor][-1] #changed from 0 to -1 to have pulse count pc sensor (newer data)
-    
-    target_string = "soil_moisture"
-    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
-
-    sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
-    sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
-
-    #get lon lat from station:
-    lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
-    #if number not as the first entry: use filter np.array(df_2["lon"].values[0][0])[np.array(df_2["lon"].values[0][0]) != None][0] .values[0][0][0]
-
-    #pc_insight = sensor_pc.data.precipitation
-    
-    sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
-    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
-    
-    # imput missing hourly values
-    start_date = sm_filter.index.min()
-    end_date = pc_filter.index.max()
-    common_index = pd.date_range(start_date, end_date, freq="h")
-    
-    
-    pc_filter_unimputed = pc_filter.reindex(common_index)
-    #print(station_nam)
-    #print("sm")
-    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
-    #print("pc")
-    pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
-    #pc_filter, n_pc = syn_pc_gamma(pc_filter.reindex(common_index)), 0 # activate for synthetic precipitation
-    
-    #sm_filter = sm_filter.resample("D").mean()
-    #pc_filter = pc_filter.resample("D").sum()
-    
-    df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
-
-    #return sm_filter, pc_filter, pc_filter_unimputed, lon, lat, n_sm, n_pc
-    return df_filter, lon, lat, n_sm, n_pc
-
 
    
 #sm, pc, lon, lat = station_filtered(station_nam)
@@ -209,12 +161,65 @@ def loss(lam, sm, pc):
     correlation = spearmanr(sm_pred, sm)[0]
     return 1 - correlation
 
-# Function to optimise loss factor and calculate predictions in one step
-def sm_prediction(station_nam):
+# Function to select sensor, filter data, optimise loss factor and calculate predictions in one step
+def sm_prediction(station_nam, precipitation=None):
+    '''
+    precipitation parameter: if None, measured imputed precipitation data is used to predict soil moisture,
+    else defined precipitation is used instead
+    '''
+    
     print(station_nam)
-    #sm, pc, pc_unimputed, lon, lat, n_sm, n_pc = station_filtered(station_nam)
-    df_filter, lon, lat, n_sm, n_pc = station_filtered(station_nam)
-    pc = df_filter["pc"].values
+    
+    station = ismn_data['SCAN'][station_nam]
+    
+    sens = station.sensors
+    
+    target_string = "precipitation"
+    prec_sensor = [sensor for sensor in sens if target_string in sensor][-1] #changed from 0 to -1 to have pulse count pc sensor (newer data)
+    
+    target_string = "soil_moisture"
+    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
+
+    sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
+    sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
+
+    #get lon lat from station:
+    lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
+    #if number not as the first entry: use filter np.array(df_2["lon"].values[0][0])[np.array(df_2["lon"].values[0][0]) != None][0] .values[0][0][0]
+
+    #pc_insight = sensor_pc.data.precipitation
+    
+    sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
+    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
+    
+    # imput missing hourly values
+    start_date = sm_filter.index.min()
+    end_date = pc_filter.index.max()
+    common_index = pd.date_range(start_date, end_date, freq="h")
+    
+    
+    pc_filter_unimputed = pc_filter.reindex(common_index)
+    #print(station_nam)
+    #print("sm")
+    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
+    #print("pc")
+    pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
+    #pc_filter, n_pc = syn_pc_gamma(pc_filter.reindex(common_index)), 0 # activate for synthetic precipitation
+    
+    #sm_filter = sm_filter.resample("D").mean()
+    #pc_filter = pc_filter.resample("D").sum()
+    
+    df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
+    
+    
+    # eigentliche Funktion
+    
+    #df_filter, lon, lat, n_sm, n_pc = station_filtered(station_nam)
+    if precipitation is None:
+        pc = df_filter["pc"].values
+    else:
+        pc = precipitation.values
+        df_filter['pc'] = precipitation
     sm = df_filter["sm"].values
     #df_aligned = align_timestamps(sm, pc, pc_unimputed)
 
@@ -682,54 +687,20 @@ df_0_refilled = pd.concat([ds for ds in ds_0_refilled_l], axis=1)
 df_0_refilled.plot()
 
 #%%
-# change sm_prediction function to use on refilled pc dataframes
-def sm_prediction_refilled(station_nam, pc_refilled):
-    print(station_nam)
-    df_filter, lon, lat, n_sm, n_pc = station_filtered(station_nam)
-    #pc = df_filter["pc"].values
-    pc = pc_refilled.values
-    sm = df_filter["sm"].values
-
-    initial_guess = [0.8] # expecting high values for lamda (hourly changes)
-    result = minimize(loss, initial_guess, args=(sm, pc), bounds=[(0, 1)], method="Nelder-Mead")
-    lam_opt = result.x[0]
-    print(round(lam_opt,2))
-
-    #sm_pred = api(df_filter["pc"], lam_opt)
-    sm_pred = api(pc_refilled, lam_opt)
-    df_filter['pc'] = pc_refilled
-    df_filter['sm_pred'] = sm_pred
-
-    corr_pearson = pearsonr(df_filter["sm"], sm_pred)
-    corr_spearman = spearmanr(df_filter["sm"], sm_pred)
-
-    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
-    
-    rmse = np.sqrt(np.mean((rescaled_sm - df_filter["sm"].values)**2))
-    
-    df_filter["sm_pred_rescaled"] = rescaled_sm
-    
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam_opt], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
-                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_filter["sm_pred"].values], "sm": [df_filter["sm"].values]})
-
-
-    return df_filter, df_stations
-
-#%%
 # predict sm with refilled pc and get spearman correlations
 corr_gamma_l, corr_kNN_l, corr_0_l = [], [], []
 columns = df_gamma_refilled.columns
 
 for column in columns:
-    df_2_refilled = sm_prediction_refilled(station_nam, df_gamma_refilled[column])[1]
+    df_2_refilled = sm_prediction(station_nam, df_gamma_refilled[column])[1]
     corr = df_2_refilled["spearman"][0][0]
     corr_gamma_l.append(round(corr, 3))
 
-    df_2_refilled = sm_prediction_refilled(station_nam, df_kNN_refilled[column])[1]
+    df_2_refilled = sm_prediction(station_nam, df_kNN_refilled[column])[1]
     corr = df_2_refilled["spearman"][0][0]
     corr_kNN_l.append(round(corr, 3))
     
-    df_2_refilled = sm_prediction_refilled(station_nam, df_0_refilled[column])[1]
+    df_2_refilled = sm_prediction(station_nam, df_0_refilled[column])[1]
     corr = df_2_refilled["spearman"][0][0]
     corr_0_l.append(round(corr, 3))
 
