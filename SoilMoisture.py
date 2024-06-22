@@ -58,7 +58,7 @@ def imput_missing(data, plott=False):
     #plt.hist(data, bins=100, density=True, alpha=0.6, color='g', label='Data')
 
     if plott:
-            # # Plot the PDF of the fitted gamma distribution
+            # Plot the PDF of the fitted gamma distribution
             x = np.linspace(0, data.max(), 100)
             pdf = gamma.pdf(x, a, loc=loc, scale=scale)
             plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
@@ -276,11 +276,12 @@ fig2, ax3 = plt.subplots(figsize=(12,4))
 #ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
 ax3.plot(df_1.index, df_1.pc, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
+ax3.set_ylim(0,120)
 
 ax3_2 = ax3.twinx()
-ax3_2.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax3_2.plot(df_1.index, df_1.sm*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax3_2.set_ylabel("m³/m³ * 100")
-ax3_2.plot(df_1.index, df_1.sm_pred_rescaled, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+ax3_2.plot(df_1.index, df_1.sm_pred_rescaled*100, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
 #ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
 
 #ax3_2.set_ylabel("mm")
@@ -291,7 +292,7 @@ lines_1, labels_1 = ax3.get_legend_handles_labels()
 lines_2, labels_2 = ax3_2.get_legend_handles_labels()
 ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
 
-plt.legend(loc='best')
+#plt.legend(loc='best')
 plt.grid(alpha=0.4)
 plt.tight_layout()
 #plt.show()
@@ -305,18 +306,13 @@ fig4, ax4 = plt.subplots(figsize=(12,4))
 
 df_1_isel = df_1.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
 
-#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
-ax4.plot(df_1_isel.index, df_1_isel.pc, label='Precipitation', c="blue")
+ax4.plot(df_1_isel.index, df_1_isel.pc, label='Precipitation [mm]', c="blue")
 ax4.set_ylabel("mm")
 
-
 ax4_2 = ax4.twinx()
-ax4_2.plot(df_1_isel.index, df_1_isel.sm*100, label='Soil Moisture Measured', c="green")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax4_2.set_ylabel("m³/m³ * 100")
-ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction', c="red")
-#ax3.plot(df_1.index, df_1.sm, label='Soil Moisture Measured [mm]', c="green")
-
-#ax3_2.set_ylabel("mm")
+ax4_2.plot(df_1_isel.index, df_1_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
 
 ax4.set_title("Station: " + station_nam)
 
@@ -324,54 +320,19 @@ lines_1, labels_1 = ax4.get_legend_handles_labels()
 lines_2, labels_2 = ax4_2.get_legend_handles_labels()
 ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
 
-#plt.legend()
 plt.grid(alpha=0.4)
 plt.tight_layout()
 plt.show()
 
 #%%
 # loop over all stations
-stations = ['AAMU-jtg', 'Abrams', 'AdamsRanch#1', 'Alcalde', 'AlkaliMesa', 'AllenFarms', 
-            'Ames', 'AshValley', 'BeasleyLake', 'Beaumont', 'BlueCreek', 'BodieHills', 
-            'BraggFarm', 'BroadAcres', 'Buckhorn', 'BuffaloJump', 'BusbyFarm', 'Bushland#1', 
-            'CMRBLTAR-MO', 'CacheJunction', 'CarverFarm', 'CaveValley', 'CentraliaLake', 
-            'Charkiln', 'ChickenRidge', 'Circleville', 'CochoraRanch', 'ConradAgRc', 
-            'CookFarmFieldD', 'Cper', 'CrescentLake#1', 'Crossroads', 'Cullman-NAHRC', 
-            'DeathValleyJCT', 'DeeRiverRanch', 'DeepSprings', 'DesertCenter', 'Dexter', 
-            'DoeRidge', 'Dugway', 'EagleLake', 'Eastland', 'EastviewFarm', 'ElsberryPMC', 
-            'Enterprise', 'Ephraim', 'ErosDataCenter', 'Essex', 'EvergladesArs', 'FordDryLake', 
-            'FortAssiniboine#1', 'FortReno#1', 'FrenchGulch', 'Geneva#1', 'GlacialRidge', 
-            'GoodwinCreekPasture', 'GoodwinCreekTimber', 'Goshute', 'Grantsville', 'GreenRiver', 
-            'GrouseCreek', 'HalsCanyon', 'HarmsWay', 'HartselleUSDA', 'Hodges', 'Holden', 
-            'HubbardBrook', 'Hytop', 'IsbellFarms', 'JohnsonFarm', 'Jordan', 'JordanValleyCwma', 
-            'JornadaExpRange', 'JournaganRanch', 'Kingsville', 'KnoxCity', 'KoptisFarms', 
-            'Ku-nesa', 'KyleCanyon', 'LINDSAY', 'Levelland', 'Lind#1', 'LittleRedFox', 
-            'LittleRiver', 'Livingston-UWA', 'LosLunasPmc', 'LovellSummit', 'LovelockNnr', 
-            'LyeBrook', 'LynhartRanch', 'MahantangoCk', 'MammothCave', 'Mandan#1', 
-            'Manderfield', 'MarbleCreek', 'MarkTwainHS', 'MascomaRiver', 'Mason#1', 'Mayday', 
-            'McalisterFarm', 'MccrackenMesa', 'Milford', 'Moccasin', 'MollyCaren#1', 'MonoclineRidge', 
-            'Morgan', 'MorrisFarms', 'MountMansfield', 'MountainHome', 'MtVernon', 'NPiedmontArec', 
-            'Nephi', 'NorthIssaquena', 'Nunn#1', 'Onward', 'OrchardRangeSite', 'Panguitch', 'ParkValley', 
-            'PeeDee', 'PerdidoRivFarms', 'Perthshire', 'Phillipsburg', 'PineNut', 'PorterCanyon', 
-            'PowderMill', 'PowellGardens', 'PrairieView#1', 'Price', 'Princeton#1', 
-            'ReynoldsHomestead', 'Riesel', 'RiverRoadFarms', 'RockSpringsPa', 'RogersFarm#1', 
-            'SHELDON', 'SanAngelo', 'SandHollow', 'SandyRidge', 'Schell-Osage', 'Scott', 
-            'SellersLake#1', 'Selma', 'Sevilleta', 'ShadowMtns', 'ShagbarkHills', 'ShawNatureReserve', 
-            'SheepSpringsWX', 'Shenandoah', 'Sidney', 'SilverCity', 'Spickard', 'SplitMountain', 
-            'Spooky', 'StanleyFarm', 'Starkville', 'Stephenville', 'Stubblefield', 'SudduthFarms', 
-            'SunleafNursery', 'TABLEMOUNTAIN', 'TNCFortBayou', 'Tidewater#1', 'TidewaterArec', 
-            'Torrington#1', 'TroughSprings', 'TuleValley', 'Tunica', 'Tuskegee', 'TwinPinesConservationArea', 
-            'UAPBCampus-PB', 'UAPBDewitt', 'UAPBEarle', 'UAPBLonokeFarm', 'UAPBMarianna', 
-            'UAPBPointRemove', 'Uvalde', 'UwPlatteville', 'Vance', 'Vermillion', 'Vernon', 'Violett', 
-            'WTARS', 'Wabeno#1', 'Wakulla#1', 'WalnutGulch#1', 'Watkinsville#1', 'Wedowee', 'Weslaco', 
-            'WestSummit', 'WillowWells', 'YoumansFarm']
 
 result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "pearson", "spearman","sm_pred", "sm"]) #"rmse"
-for station in stations:
+for station in ismn_data.list_stations():
     if station == 'Sidney':             # to avoid FitErrors at these stations
         print('Station Sidney passed')
-    elif station == 'Violett':
-        print('Station Violett passed')
+    #elif station == 'Violett':
+    #    print('Station Violett passed')
     else:
         name = station
         station = ismn_data['SCAN'][name]
@@ -477,6 +438,7 @@ ax.add_feature(cfeature.COASTLINE)
 ax.add_feature(cfeature.STATES)
 ax.add_feature(cfeature.LAND)
 ax.add_feature(cfeature.OCEAN)
+ax.add_feature(cfeature.LAKES)
 
 sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), 
                 c=result["corr_coef"], cmap="plasma", s=result["n_sm"]/1000,
@@ -484,8 +446,8 @@ sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(),
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
 
-sizes = [1000, 10000, 100000]*1000  # Example sizes
-labels = ['1000', '10000','100000']  # Corresponding labels
+sizes = [1000, 10000, 100000]*1000  # Sizes
+labels = ['1000', '10000','100000']  # Size Labels
 handles = [mlines.Line2D([], [], color='w', marker='o', markersize=np.sqrt(size/1000), 
                          markerfacecolor='gray', markeredgecolor='k', label=label) 
            for size, label in zip(sizes, labels)]
@@ -528,14 +490,22 @@ ax.add_feature(cfeature.COASTLINE)
 ax.add_feature(cfeature.STATES)
 ax.add_feature(cfeature.LAND)
 ax.add_feature(cfeature.OCEAN)
+ax.add_feature(cfeature.LAKES)
 
 sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=result["rmse"]*100, 
-                cmap="gist_rainbow_r", ec="k", vmin=0, vmax=95) #, label="SCAN", edgecolors="k"
+                cmap="gist_rainbow_r", s=result["n_sm"]/1000, ec="k", vmin=0, vmax=95) #, label="SCAN", edgecolors="k"
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Root Mean Squared Error [m³/m³ * 100]')
 
+sizes = [1000, 10000, 100000]*1000  # Sizes
+labels = ['1000', '10000','100000']  # Size Labels
+handles = [mlines.Line2D([], [], color='w', marker='o', markersize=np.sqrt(size/1000), 
+                         markerfacecolor='gray', markeredgecolor='k', label=label) 
+           for size, label in zip(sizes, labels)]
+legend = ax.legend(handles=handles, title='Number of measurements', loc='upper left', frameon=True, bbox_to_anchor=(1, 0.15))
+
 #ax.set_title("Pearson: Measured Precipitation and Predicted Soil Moisture")
-ax.set_title("RSME: Measured Precipitation and Predicted Soil Moisture")
+ax.set_title("RSME: Measured Precipitation and Predicted Soil Moisture \n scaled after number of available measurements")
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
 gl.right_labels = False
