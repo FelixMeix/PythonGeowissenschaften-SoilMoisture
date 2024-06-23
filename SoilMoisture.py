@@ -12,9 +12,9 @@ get_ipython().run_line_magic('matplotlib', 'inline')
 # Felix
 #path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
 # Bettina
-path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
+#path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -460,17 +460,11 @@ def refill_gamma(ds):
     n_missing = ds.isnull().sum()
     available = ds[ds.notnull()]
     
-    #available = pd.to_numeric(available, errors='coerce') # to avoid input error
-    
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     
     ds_filled = ds.copy()
     ds_filled[ds_filled.isnull()] = gamma_sample
-    
-    #x = np.linspace(0, np.max(ds_filled), 100)
-    #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
-    #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
 
     return ds_filled
 
@@ -749,4 +743,6 @@ fig, ax = plt.subplots()
 x = np.arange(len(sm_syn))
 ax.plot(x, sm_measured_sorted.values, label='measured')
 ax.plot(x, sm_syn_sorted.values, label='predicted with synthetic precipitation')
+ax.set_xlabel('number of soil moisture values')
+ax.set_ylabel('soil moisture [m$^3$/m$^3$ *100]')
 ax.legend()
