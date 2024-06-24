@@ -15,11 +15,11 @@ import cartopy.feature as cfeature
 import matplotlib.lines as mlines
 
 # Felix
-path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_U02A_20240529.zip"
+#path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_U02A_20240529.zip"
 # Bettina
 #path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Projekt/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -418,7 +418,6 @@ station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019
 df_1, df_2 = sm_prediction(station_nam)
 ds_pc = df_1['pc_unimputed']
 
-#percentage = [10, 20, 30, 50, 70]
 percentage = range(0,100,10)
 ds_del_l = []
 
@@ -596,79 +595,8 @@ ds_pc.plot(label='measured precipitation')
 ds_syn_pc.plot(label='synthetic precipitation')
 ax.legend()
 
-#%%
-# change station_filtered function to use synthetic precipitation instead of measured
-
-def station_filtered_syn(station_nam):
-
-    station = ismn_data['SCAN'][station_nam]
-    
-    sens = station.sensors
-    
-    target_string = "precipitation"
-    prec_sensor = [sensor for sensor in sens if target_string in sensor][-1] #changed from 0 to -1 to have pulse count pc sensor (newer data)
-    
-    target_string = "soil_moisture"
-    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
-
-    sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
-    sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
-
-    #get lon lat from station:
-    lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
-    
-    sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
-    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
-    
-    # imput missing hourly values
-    start_date = sm_filter.index.min()
-    end_date = pc_filter.index.max()
-    common_index = pd.date_range(start_date, end_date, freq="h")
-    
-    
-    pc_filter_unimputed = pc_filter.reindex(common_index)
-    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
-    #pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
-    pc_filter, n_pc = syn_pc_gamma(pc_filter.reindex(common_index)), 0 # activate for synthetic precipitation
-    
-    
-    df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
-
-    return df_filter, lon, lat, n_sm, n_pc
-
-# use station_filtered_syn in sm_prediction function
-def sm_prediction_syn(station_nam):
-    print(station_nam)
-    df_filter, lon, lat, n_sm, n_pc = station_filtered_syn(station_nam)
-    pc = df_filter["pc"].values
-    sm = df_filter["sm"].values
-
-    initial_guess = [0.8] # expecting high values for lamda (hourly changes)
-    result = minimize(loss, initial_guess, args=(sm, pc), bounds=[(0, 1)], method="Nelder-Mead")
-    lam_opt = result.x[0]
-    print(lam_opt)
-
-    sm_pred = api(df_filter["pc"], lam_opt)
-    df_filter['sm_pred'] = sm_pred
-
-    corr_pearson = pearsonr(df_filter["sm"], sm_pred)
-    corr_spearman = spearmanr(df_filter["sm"], sm_pred)
-
-    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
-    
-    rmse = np.sqrt(np.mean((rescaled_sm - df_filter["sm"].values)**2))
-    
-    df_filter["sm_pred_rescaled"] = rescaled_sm
-    
-    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam_opt], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
-                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_filter["sm_pred"].values], "sm": [df_filter["sm"].values]})
-
-
-    return df_filter, df_stations
-
-
 # soil moisture from synthetic precipitation
-df_1_syn, df_2_syn = sm_prediction_syn(station_nam)
+df_1_syn, df_2_syn = sm_prediction(station_nam, precipitation=ds_syn_pc)
 
 #%%
 
@@ -717,7 +645,7 @@ plt.tight_layout()
 plt.show()
 
 #%%
-# duration line of meaured and predicted sm (from synthetic pc)
+# duration line of measured and predicted sm (from synthetic pc)
 
 sm_syn_sorted = sm_syn.sort_values()
 sm_measured_sorted = sm_measured.sort_values()
