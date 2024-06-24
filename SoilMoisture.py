@@ -1,6 +1,8 @@
+# Import all needed packages
 from ismn.interface import ISMN_Interface
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 import pandas as pd
 from scipy.optimize import minimize
 from scipy.stats import spearmanr, pearsonr, gamma
@@ -8,46 +10,42 @@ from sklearn.impute import KNNImputer
 #%matplotlib inline
 from IPython import get_ipython
 get_ipython().run_line_magic('matplotlib', 'inline')
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+import matplotlib.lines as mlines
 
 # Felix
-#path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_l6Xf_20240517.zip"
+path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_U02A_20240529.zip"
 # Bettina
 #path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
 
-station_nam = "MccrackenMesa"
-station_nam = "Mason#1"
-
 # station with the least missing values:
 station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
-
-#station_nam = "MtVernon" # sm n_m missing: 34; pc n_missing: 40; up to 2024 (second choice)
-
 #%%
 
 # function to imput missing data (set to zero, previously based on Gamma distribution)
-def imput_missing(data, plott=False):
-    #n_missing = np.sum(np.isnan(data))
+def imput_missing(data, plott=False, Gamma=False):
+    n_missing = np.sum(np.isnan(data))
     mask = np.isnan(data)
     n = np.sum([~mask])
     available = data[~mask]
 
-    #print('n_missing[%]:', round((n_missing/len(data))*100,2))
-    a, loc, scale = gamma.fit(available)
-    #gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
-
-    #loc, scale = expon.fit(available)
-    #sample = expon.rvs(loc=loc, scale=scale, size=n_missing)
+    if Gamma:
+        a, loc, scale = gamma.fit(available)
+        gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
+        data_imputed = data.copy()
+        data_imputed[mask] = gamma_sample
+        
+    else:
+        data_imputed = data.copy()
+        data_imputed[mask] = 0
     
-    data_imputed = data.copy()
-    #data_imputed[mask] = gamma_sample
-    data_imputed[mask] = 0
-    
-    if plott:
+    if plott and Gamma:
             # Plot the PDF of the fitted gamma distribution
             x = np.linspace(0, data.max(), 100)
             pdf = gamma.pdf(x, a, loc=loc, scale=scale)
@@ -58,18 +56,17 @@ def imput_missing(data, plott=False):
    
 # function to rescale predicted soil moisture to m^3/m^3 * 100
 def rescale_sm(sm, sm_pred):
-    #: x_scaled = (x – mean(x))/std(x) * std(y) + mean(y)
     x = sm_pred
     y = sm
     x_scaled = (x - np.mean(x))/np.std(x) * np.std(y) + np.mean(y)
     return x_scaled
 
-# function to optimize lambda by maximizing the spearman correlation (stepwise)
+# function to optimize lambda by maximizing the pearson correlation (stepwise)
 def optimize_lam(sm, pc):
     max_corr = 0
     for lam in np.arange(0, 1.01, 0.01):
         sm_pred = api(pc,lam)
-        corr = spearmanr(sm_pred, sm)[0]
+        corr = pearsonr(sm_pred, sm)[0]
         if corr > max_corr:
             max_corr = corr
             optimized_lam = lam
@@ -82,8 +79,7 @@ def api(prec, lam):
     for i in range(len(prec)-1):
         pred = sm_pred[-1] * lam + prec[i+1]
         sm_pred.append(pred)
-
-    #sm_pred = np.array(sm_pred)
+        
     return np.array(sm_pred)
 
 # loss function
@@ -91,11 +87,12 @@ def loss(lam, sm, pc):
     sm_pred = api(pc, lam[0])
     sm_pred = np.array(sm_pred)
     sm = np.array(sm)
-    correlation = spearmanr(sm_pred, sm)[0]
+    #correlation = spearmanr(sm_pred, sm)[0]
+    correlation = pearsonr(sm_pred, sm)[0]
     return 1 - correlation
 
 # Function to select sensor, filter data, optimise loss factor and calculate predictions in one step
-def sm_prediction(station_nam, precipitation=None):
+def sm_prediction(station_nam, precipitation=None, Gamma=False, plott = False):
     '''
     precipitation parameter: if None, measured imputed precipitation data is used to predict soil moisture,
     else defined precipitation is used instead
@@ -118,10 +115,10 @@ def sm_prediction(station_nam, precipitation=None):
 
     #get lon lat from station:
     lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
-    #if number not as the first entry: use filter np.array(df_2["lon"].values[0][0])[np.array(df_2["lon"].values[0][0]) != None][0] .values[0][0][0]
     
+    #only keep positive values
     sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
-    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
+    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]
     
     # imput missing hourly values
     start_date = sm_filter.index.min()
@@ -130,16 +127,19 @@ def sm_prediction(station_nam, precipitation=None):
     
     
     pc_filter_unimputed = pc_filter.reindex(common_index)
-    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
-    pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
-    #pc_filter, n_pc = syn_pc_gamma(pc_filter.reindex(common_index)), 0 # activate for synthetic precipitation
+    
+    if Gamma:
+        sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index), plott=plott, Gamma=True)
+        pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index), plott=plott, Gamma=True)
+    else:
+        sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
+        pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
+
     
     df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
     
     
     # actual prediction
-    
-    #df_filter, lon, lat, n_sm, n_pc = station_filtered(station_nam)
     if precipitation is None:
         pc = df_filter["pc"].values
     else:
@@ -147,23 +147,28 @@ def sm_prediction(station_nam, precipitation=None):
         df_filter['pc'] = precipitation
     sm = df_filter["sm"].values
 
-    initial_guess = [0.8] # expecting high values for lamda (hourly changes)
+    # optimize lambda
+    initial_guess = [0.8] # expecting high values for lambda (hourly changes)
     result = minimize(loss, initial_guess, args=(sm, pc), bounds=[(0, 1)], method="Nelder-Mead")
     lam_opt = result.x[0]
     print(round(lam_opt,2))
     
+    #Soil Moisture prediction
     sm_pred = api(df_filter["pc"], lam_opt)
     df_filter['sm_pred'] = sm_pred
-
+    
+    #rescale sm_pred to sm_measured
+    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
+    
+    #goodness of fit calculations
     corr_pearson = pearsonr(df_filter["sm"], sm_pred)
     corr_spearman = spearmanr(df_filter["sm"], sm_pred)
-
-    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
     
     rmse = np.sqrt(np.mean((rescaled_sm - df_filter["sm"].values)**2))
     
     df_filter["sm_pred_rescaled"] = rescaled_sm
     
+    #merge all results in one DataFrame
     df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam_opt], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
                                "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_filter["sm_pred"].values], "sm": [df_filter["sm"].values]})
 
@@ -171,12 +176,10 @@ def sm_prediction(station_nam, precipitation=None):
     return df_filter, df_stations
 
 #%%
-
-
 df_1, df_2 = sm_prediction(station_nam)
 
 #%%
-#plot sm and sm_predict:
+#plot sm and sm_predict of the whole time series:
 fig2, ax3 = plt.subplots(figsize=(12,4))
 
 ax3.plot(df_1.index, df_1.pc, label='Precipitation [mm]', c="blue")
@@ -196,11 +199,11 @@ ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), l
 
 plt.grid(alpha=0.4)
 plt.tight_layout()
+plt.savefig('SM_pred'+ station_nam,dpi=400)
 
 
 #%%
 #Plot for one year:
-
 fig4, ax4 = plt.subplots(figsize=(12,4))
 
 df_1_isel = df_1.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
@@ -221,11 +224,11 @@ ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), l
 
 plt.grid(alpha=0.4)
 plt.tight_layout()
+plt.savefig('SM_pred_one_year'+ station_nam,dpi=400)
 plt.show()
 
 #%%
-# loop over all stations
-
+# loop over all stations and store it in the result DataFrame
 result = pd.DataFrame(columns=["station", "lon", "lat", "lamda", "pearson", "spearman","sm_pred", "sm"]) #"rmse"
 for station in ismn_data.list_stations():
     if station == 'Sidney':             # to avoid FitErrors at these stations
@@ -240,25 +243,17 @@ for station in ismn_data.list_stations():
             print(name)
             pass
         else:
-            df_1, df_2 = sm_prediction(name)
+            df_1, df_2 = sm_prediction(name,precipitation=None, Gamma=False)
             result = pd.concat([result, df_2], axis=0, ignore_index=True)
 #%%
-
-#print(result['lamda'][:30])            
-print(min(result['lamda']))
-print(max(result['lamda']))
-print(np.median(result['lamda']))
+result["corr_coef"] = [result["pearson"][row][0] for row in range(len(result["lon"]))] 
 #%%
 # find and compare two stations with highest and lowest lamda
-
 low_lamda = result.loc[result["n_sm"] > 10000]
 low_lamda = low_lamda["station"].loc[low_lamda["lamda"].idxmin()]
 high_lamda = result["station"].iloc[np.argmax(result["lamda"])]
 
 subresult = result.loc[result["station"].isin([low_lamda, high_lamda])]
-
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
 
 lat_north = 50
 lat_south = 23
@@ -268,7 +263,6 @@ lon_east = -75
 fig = plt.figure(figsize=(10, 6))
 ax = plt.axes(projection=ccrs.LambertConformal())
 
-# Set extent and add features
 ax.set_extent([lon_west, lon_east, lat_south, lat_north])
 ax.add_feature(cfeature.COASTLINE)
 ax.add_feature(cfeature.STATES)
@@ -276,7 +270,6 @@ ax.add_feature(cfeature.LAND)
 ax.add_feature(cfeature.OCEAN)
 ax.add_feature(cfeature.LAKES)
 
-# Set title
 ax.set_title("Two stations with highest and lowest lamda")
 
 # Plotting and annotating
@@ -284,7 +277,7 @@ for station in [low_lamda, high_lamda]:
     res = result.loc[result["station"] == station]
     ax.plot(res['lon'], res['lat'], 'ro', transform=ccrs.PlateCarree(), markersize=15)
     ax.annotate(
-        f"Station: {station}\nloss factor: {round(float(res['lamda']), 2)}\nspearman: {round(float(res['spearman'].iloc[0][0]), 2)}\nrmse: {round(float(res['rmse']), 2)}\nn sm: {int(res['n_sm'])}",
+        f"Station: {station}\nloss factor: {round(float(res['lamda']), 2)}\npearson: {round(float(res['pearson'].iloc[0][0]), 2)}\nrmse: {round(float(res['rmse']), 2)}\nn sm: {int(res['n_sm'])}",
         xy=(res['lon'].values[0], res['lat'].values[0]),
         xycoords=ccrs.PlateCarree()._as_mpl_transform(ax),
         xytext=(20, -20),
@@ -293,7 +286,6 @@ for station in [low_lamda, high_lamda]:
         bbox=dict(boxstyle='round,pad=0.5', edgecolor='black', facecolor='lightpink')#, alpha=0.7
     )
 
-# Adding gridlines
 gl = ax.gridlines(draw_labels=True, x_inline=False, y_inline=False, alpha=0.5, linestyle="--")
 gl.top_labels = False
 gl.right_labels = False
@@ -324,10 +316,7 @@ plt.show()
 plt.savefig("high_low_lamda_prec_sm_mm.jpg", dpi=300)
 
 #%%
-# Cartopy Plots
-import matplotlib.lines as mlines
-result["corr_coef"] = [result["spearman"][row][0] for row in range(len(result["lon"]))] 
-
+# Plot all stations on map (correlation and RMSE)
 # cartopy plot for correlation  #added number of measurements as size
 fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
 
@@ -340,7 +329,7 @@ ax.add_feature(cfeature.LAKES)
 
 sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), 
                 c=result["corr_coef"], cmap="plasma", s=result["n_sm"]/1000,
-                ec="k")
+                ec="k", vmin=0, vmax=0.8, zorder=1)
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Correlation Coefficient')
 
@@ -351,16 +340,17 @@ handles = [mlines.Line2D([], [], color='w', marker='o', markersize=np.sqrt(size/
            for size, label in zip(sizes, labels)]
 
 ax.legend(handles=handles, title='Number of measurements', loc='upper left', frameon=True, bbox_to_anchor=(1, 0.2))
-plt.title("Spearman: Measured Soil Moisture and Predicted Soil Moisture \n scaled after number of available measurements")
+plt.title("Pearson: Measured Soil Moisture and Predicted Soil Moisture \n scaled after number of available measurements")
 
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
 gl.right_labels = False
 
-plt.savefig("Spearman_cartopy.jpg", dpi=300)
+plt.show()
+
+plt.savefig("Pearson_cartopy.jpg", dpi=300)
 
 # cartopy for rmse
-
 fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
 
 ax.set_extent([lon_west, lon_east, lat_south, lat_north])
@@ -371,7 +361,7 @@ ax.add_feature(cfeature.OCEAN)
 ax.add_feature(cfeature.LAKES)
 
 sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c=result["rmse"]*100, 
-                cmap="gist_rainbow_r", s=result["n_sm"]/1000, ec="k", vmin=0, vmax=95) #, label="SCAN", edgecolors="k"
+                cmap="gist_rainbow_r", s=result["n_sm"]/1000, ec="k", vmin=0, vmax=50) #, label="SCAN", edgecolors="k"
 cbar = plt.colorbar(sc, ax=ax, orientation='vertical', shrink=0.5)
 cbar.set_label('Root Mean Squared Error [m³/m³ * 100]')
 
@@ -381,7 +371,7 @@ handles = [mlines.Line2D([], [], color='w', marker='o', markersize=np.sqrt(size/
                          markerfacecolor='gray', markeredgecolor='k', label=label) 
            for size, label in zip(sizes, labels)]
 legend = ax.legend(handles=handles, title='Number of measurements', loc='upper left', frameon=True, bbox_to_anchor=(1, 0.15))
-ax.set_title("RSME: Measured Precipitation and Predicted Soil Moisture \n scaled after number of available measurements")
+ax.set_title("RMSE: Measured Soil Moisture and Predicted Soil Moisture \n scaled after number of available measurements")
 
 gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
 gl.top_labels = False
@@ -390,15 +380,14 @@ gl.right_labels = False
 plt.savefig("RMSE_cartopy.jpg", dpi=300)
 
 
-# scatterplot for correlation coefficient and lamda
-
+# scatterplot for correlation coefficient and lambda
 fig, ax = plt.subplots(figsize=(12,4))
 
 ax.scatter(result["lamda"], result["corr_coef"], c="blue")
-ax.set_ylabel("spearman correlation coefficient")
-ax.set_xlabel("loss coefficient lamda") #r$\lamda$
+ax.set_ylabel("pearson correlation coefficient")
+ax.set_xlabel("loss coefficient lamda")
 
-ax.set_title("all stations - spearman correlation over lamda")
+ax.set_title("all stations - pearson correlation over lambda")
 
 plt.grid(alpha=0.4)
 plt.tight_layout()
@@ -407,15 +396,14 @@ plt.show()
 plt.savefig("corr_lamda_scatter.jpg", dpi=300)
 
 
-# histogram for lamda 
-
+# histogram for lambda 
 fig, ax = plt.subplots(figsize=(12,4))
 
 ax.hist(result["lamda"], ec="k", fc="lightblue", bins=40, density=False, cumulative=False)
 ax.set_ylabel("absolute frequency")
-ax.set_xlabel("loss coefficient lamda")
+ax.set_xlabel("loss coefficient lambda")
 
-ax.set_title("all stations - lamda ")
+ax.set_title("all stations - lambda ")
 
 plt.grid(alpha=0.4)
 plt.tight_layout()
@@ -426,9 +414,7 @@ plt.savefig("Lamda_histo.jpg", dpi=300)
 
 #%%
 # for chosen station set percentage of pc values to nan artifically
-
 station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019/06/20
-#station_nam = "MtVernon" # sm n_m missing: 34; pc n_missing: 40; up to 2024 (second choice)
 df_1, df_2 = sm_prediction(station_nam)
 ds_pc = df_1['pc_unimputed']
 
@@ -460,11 +446,17 @@ def refill_gamma(ds):
     n_missing = ds.isnull().sum()
     available = ds[ds.notnull()]
     
+    #available = pd.to_numeric(available, errors='coerce') # to avoid input error
+    
     a, loc, scale = gamma.fit(available)
     gamma_sample = gamma.rvs(a, loc=loc, scale=scale, size=n_missing)
     
     ds_filled = ds.copy()
     ds_filled[ds_filled.isnull()] = gamma_sample
+    
+    #x = np.linspace(0, np.max(ds_filled), 100)
+    #pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+    #plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
 
     return ds_filled
 
@@ -517,21 +509,21 @@ df_0_refilled = pd.concat([ds for ds in ds_0_refilled_l], axis=1)
 df_0_refilled.plot()
 
 #%%
-# predict sm with refilled pc and get spearman correlations
+# predict sm with refilled pc and get pearson correlations
 corr_gamma_l, corr_kNN_l, corr_0_l = [], [], []
 columns = df_gamma_refilled.columns
 
 for column in columns:
     df_2_refilled = sm_prediction(station_nam, df_gamma_refilled[column])[1]
-    corr = df_2_refilled["spearman"][0][0]
+    corr = df_2_refilled["pearson"][0][0]
     corr_gamma_l.append(round(corr, 3))
 
     df_2_refilled = sm_prediction(station_nam, df_kNN_refilled[column])[1]
-    corr = df_2_refilled["spearman"][0][0]
+    corr = df_2_refilled["pearson"][0][0]
     corr_kNN_l.append(round(corr, 3))
     
     df_2_refilled = sm_prediction(station_nam, df_0_refilled[column])[1]
-    corr = df_2_refilled["spearman"][0][0]
+    corr = df_2_refilled["pearson"][0][0]
     corr_0_l.append(round(corr, 3))
 
 
@@ -540,20 +532,20 @@ corr_kNN = pd.DataFrame([corr_kNN_l], columns=columns)
 corr_0 = pd.DataFrame([corr_0_l], columns=columns)
 
 #%%
-# spearman correlation of original and refilled pc values
+# pearson correlation of original and refilled pc values
 columns = df_gamma_refilled.columns
 corr_gamma_l2, corr_kNN_l2, corr_0_l2 = [], [], []
 mask_valid = ds_pc.notnull()
 
 for column in columns:
     
-    corr = spearmanr(ds_pc[mask_valid], df_gamma_refilled[column][mask_valid])[0]
+    corr = pearsonr(ds_pc[mask_valid], df_gamma_refilled[column][mask_valid])[0]
     corr_gamma_l2.append(round(corr, 3))
 
-    corr = spearmanr(ds_pc[mask_valid], df_kNN_refilled[column][mask_valid])[0]
+    corr = pearsonr(ds_pc[mask_valid], df_kNN_refilled[column][mask_valid])[0]
     corr_kNN_l2.append(round(corr, 3))
 
-    corr = spearmanr(ds_pc[mask_valid], df_0_refilled[column][mask_valid])[0]
+    corr = pearsonr(ds_pc[mask_valid], df_0_refilled[column][mask_valid])[0]
     corr_0_l2.append(round(corr, 3))
 
 corr_gamma_2 = pd.DataFrame([corr_gamma_l2], columns=columns)
@@ -576,7 +568,7 @@ ax.scatter(x, corr_0_l, label='0', color='purple', marker='D')
 
 ax.set_ylabel('correlation coefficient')
 ax.set_xlabel('refilled values [%]')
-ax.set_title(f'Station: {station_nam}\nSpearman correlation of measured and predicted soil moisture')
+ax.set_title(f'Station: {station_nam}\nPearson correlation of measured and predicted soil moisture')
 ax.set_yticks(np.arange(0,1.1,0.1))
 ax.set_xticks(x)
 ax.legend(title='values refilled by')
@@ -683,28 +675,19 @@ df_1_syn, df_2_syn = sm_prediction_syn(station_nam)
 #plot sm and sm_predict (after synthetic precipitation):
 fig2, ax3 = plt.subplots(figsize=(12,4))
 
-#ax3.plot(df_1.index, df_1.sm_pred, label='Soil Moisture Prediction [m³/m³ * 100]')
-#ax3.plot(df_1_syn.index, df_1_syn.pc_t, label='Precipitation [mm]', c="blue")
 ax3.set_ylabel("mm")
-
 ax3_2 = ax3.twinx()
-#ax3_2.plot(df_1_syn.index, df_1_syn.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
 ax3_2.set_ylabel("m³/m³ * 100")
 ax3_2.plot(df_1_syn.index, df_1_syn.sm_pred_rescaled, label='Soil Moisture Prediction with\nSynthetic Precipitation [m³/m³ * 100]', c="darkorange")
 ax3_2.plot(df_1_syn.index, df_1_syn.sm, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
-#ax3_2.plot(df_1_syn.index, df_1_syn.pc_t, label='Precipitation [mm]', c="blue", alpha=0.5)
-#ax3_2.set_ylabel("mm")
-
 ax3.set_title("Station: " + station_nam)
 
 lines_1, labels_1 = ax3.get_legend_handles_labels()
 lines_2, labels_2 = ax3_2.get_legend_handles_labels()
 ax3.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
 
-#plt.legend(loc='best')
 plt.grid(alpha=0.4)
 plt.tight_layout()
-#plt.show()
 
 #%%
 # plot histograms for measured and synthetic sm
@@ -743,6 +726,24 @@ fig, ax = plt.subplots()
 x = np.arange(len(sm_syn))
 ax.plot(x, sm_measured_sorted.values, label='measured')
 ax.plot(x, sm_syn_sorted.values, label='predicted with synthetic precipitation')
-ax.set_xlabel('number of soil moisture values')
-ax.set_ylabel('soil moisture [m$^3$/m$^3$ *100]')
 ax.legend()
+
+
+
+
+fig, ax = plt.subplots(figsize=(10, 6), subplot_kw={'projection': ccrs.LambertConformal()})
+
+ax.set_extent([lon_west, lon_east, lat_south, lat_north])
+ax.add_feature(cfeature.COASTLINE)
+ax.add_feature(cfeature.STATES)
+ax.add_feature(cfeature.LAND)
+ax.add_feature(cfeature.OCEAN)
+ax.add_feature(cfeature.LAKES)
+
+sc = ax.scatter(result["lon"], result["lat"], transform=ccrs.PlateCarree(), c="red", 
+                s=35, ec="k") #, label="SCAN", edgecolors="k"
+ax.set_title("USA SCAN stations")
+
+gl = ax.gridlines(draw_labels = True, x_inline = False, y_inline = False, alpha = 0.5, linestyle = "--")
+gl.top_labels = False
+gl.right_labels = False
