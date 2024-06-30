@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 from scipy.optimize import minimize
-from scipy.stats import spearmanr, pearsonr, gamma
+from scipy.stats import spearmanr, pearsonr, gamma, poisson
 from sklearn.impute import KNNImputer
 #%matplotlib inline
 from IPython import get_ipython
@@ -15,11 +15,11 @@ import cartopy.feature as cfeature
 import matplotlib.lines as mlines
 
 # Felix
-#path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_U02A_20240529.zip"
+path = r"C:\Users\felix\OneDrive\Dokumente\TU Wien\Geowissenschaften-Python\Data_separate_files_header_20140517_20240517_11180_U02A_20240529.zip"
 # Bettina
 #path = r"C:\Users\betti\OneDrive\STUDIUM\SS24\Python für Geowissenschaften\SoftwareProject\Data_separate_files_header_20140517_20240517_11181_y6B1_20240517.zip"
 # Theresa
-path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Projekt/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
+#path = r"/Users/theresa/Documents/UIW/Master/Python-Programmierung für Geowissenschaften/Data_separate_files_header_20140517_20240517_11182_NAWF_20240517.zip"
 
 # read in the data:
 ismn_data = ISMN_Interface(path, parallel=False)
@@ -29,7 +29,7 @@ station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019
 #%%
 
 # function to imput missing data (set to zero, previously based on Gamma distribution)
-def imput_missing(data, plott=False, Gamma=False):
+def imput_missing(data, plott=False, Gamma=False, Poisson=False):
     n_missing = np.sum(np.isnan(data))
     mask = np.isnan(data)
     n = np.sum([~mask])
@@ -41,15 +41,26 @@ def imput_missing(data, plott=False, Gamma=False):
         data_imputed = data.copy()
         data_imputed[mask] = gamma_sample
         
+    elif Poisson:
+        lambda_est = np.mean(available)
+        poisson_sample = poisson.rvs(mu=lambda_est, size=n_missing)        
+        data_imputed = data.copy()
+        data_imputed[mask] = poisson_sample
+        
+        x = np.linspace(0, data.max(), 100)
+        pmf_values = poisson.pmf(x, mu=lambda_est)
+        plt.figure(figsize=(10, 6))
+        plt.plot(x, pmf_values, 'r-', lw=2, label='Fitted Poisson PMF')
+        
     else:
         data_imputed = data.copy()
         data_imputed[mask] = 0
     
     if plott and Gamma:
             # Plot the PDF of the fitted gamma distribution
-            x = np.linspace(0, data.max(), 100)
-            pdf = gamma.pdf(x, a, loc=loc, scale=scale)
-            plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
+        x = np.linspace(0, data.max(), 100)
+        pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+        plt.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
     
     return data_imputed, n
 
@@ -92,7 +103,7 @@ def loss(lam, sm, pc):
     return 1 - correlation
 
 # Function to select sensor, filter data, optimise loss factor and calculate predictions in one step
-def sm_prediction(station_nam, precipitation=None, Gamma=False, plott = False):
+def sm_prediction(station_nam, precipitation=None, Gamma=False, Poisson=False, plott = False):
     '''
     precipitation parameter: if None, measured imputed precipitation data is used to predict soil moisture,
     else defined precipitation is used instead
@@ -129,8 +140,11 @@ def sm_prediction(station_nam, precipitation=None, Gamma=False, plott = False):
     pc_filter_unimputed = pc_filter.reindex(common_index)
     
     if Gamma:
-        sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index), plott=plott, Gamma=True)
-        pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index), plott=plott, Gamma=True)
+        sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index), plott=plott, Gamma=True, Poisson=False)
+        pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index), plott=plott, Gamma=True, Poisson=False)
+    elif Poisson:
+        sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index), plott=plott, Gamma=False, Poisson=True)
+        pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index), plott=plott, Gamma=False, Poisson=True)
     else:
         sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
         pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
@@ -176,7 +190,13 @@ def sm_prediction(station_nam, precipitation=None, Gamma=False, plott = False):
     return df_filter, df_stations
 
 #%%
-df_1, df_2 = sm_prediction(station_nam)
+#df_1, df_2 = sm_prediction(station_nam)
+
+#Gamma  distribution and plot the distribution:
+#df_1, df_2 = sm_prediction(station_nam, precipitation=None, Gamma=True, Poisson=False, plott = True)
+
+#Poisson  distribution and plot the distribution:
+df_1, df_2 = sm_prediction(station_nam, precipitation=None, Gamma=False, Poisson=True, plott = False)
 
 #%%
 #plot sm and sm_predict of the whole time series:
@@ -224,7 +244,7 @@ ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), l
 
 plt.grid(alpha=0.4)
 plt.tight_layout()
-plt.savefig('SM_pred_one_year'+ station_nam,dpi=400)
+#plt.savefig('SM_pred_one_year'+ station_nam,dpi=400)
 plt.show()
 
 #%%
@@ -418,6 +438,7 @@ station_nam = "TidewaterArec" # sm n_m missing: 24; pc n_missing: 25; up to 2019
 df_1, df_2 = sm_prediction(station_nam)
 ds_pc = df_1['pc_unimputed']
 
+#percentage = [10, 20, 30, 50, 70]
 percentage = range(0,100,10)
 ds_del_l = []
 
@@ -595,8 +616,79 @@ ds_pc.plot(label='measured precipitation')
 ds_syn_pc.plot(label='synthetic precipitation')
 ax.legend()
 
+#%%
+# change station_filtered function to use synthetic precipitation instead of measured
+
+def station_filtered_syn(station_nam):
+
+    station = ismn_data['SCAN'][station_nam]
+    
+    sens = station.sensors
+    
+    target_string = "precipitation"
+    prec_sensor = [sensor for sensor in sens if target_string in sensor][-1] #changed from 0 to -1 to have pulse count pc sensor (newer data)
+    
+    target_string = "soil_moisture"
+    sm_sensor = [sensor for sensor in sens if target_string in sensor][0]
+
+    sensor_sm = ismn_data['SCAN'][station_nam][sm_sensor] #sm sensors are usually second to last
+    sensor_pc = ismn_data['SCAN'][station_nam][prec_sensor] #precipitation sensor is usually first
+
+    #get lon lat from station:
+    lon, lat = sensor_sm.metadata.to_dict()['longitude'][0][0], sensor_sm.metadata.to_dict()['latitude'][0][0]
+    
+    sm_filter = sensor_sm.data.soil_moisture[sensor_sm.data.soil_moisture >= 0]
+    pc_filter = sensor_pc.data.precipitation[sensor_pc.data.precipitation >= 0]#[sensor_pc.data.precipitation < 100]
+    
+    # imput missing hourly values
+    start_date = sm_filter.index.min()
+    end_date = pc_filter.index.max()
+    common_index = pd.date_range(start_date, end_date, freq="h")
+    
+    
+    pc_filter_unimputed = pc_filter.reindex(common_index)
+    sm_filter, n_sm = imput_missing(sm_filter.reindex(common_index))
+    #pc_filter, n_pc = imput_missing(pc_filter.reindex(common_index))
+    pc_filter, n_pc = syn_pc_gamma(pc_filter.reindex(common_index)), 0 # activate for synthetic precipitation
+    
+    
+    df_filter = pd.DataFrame({"sm": sm_filter.values, "pc": pc_filter.values, "pc_unimputed": pc_filter_unimputed.values}, index=common_index)
+
+    return df_filter, lon, lat, n_sm, n_pc
+
+# use station_filtered_syn in sm_prediction function
+def sm_prediction_syn(station_nam):
+    print(station_nam)
+    df_filter, lon, lat, n_sm, n_pc = station_filtered_syn(station_nam)
+    pc = df_filter["pc"].values
+    sm = df_filter["sm"].values
+
+    initial_guess = [0.8] # expecting high values for lamda (hourly changes)
+    result = minimize(loss, initial_guess, args=(sm, pc), bounds=[(0, 1)], method="Nelder-Mead")
+    lam_opt = result.x[0]
+    print(lam_opt)
+
+    sm_pred = api(df_filter["pc"], lam_opt)
+    df_filter['sm_pred'] = sm_pred
+
+    corr_pearson = pearsonr(df_filter["sm"], sm_pred)
+    corr_spearman = spearmanr(df_filter["sm"], sm_pred)
+
+    rescaled_sm = rescale_sm(df_filter["sm"].values, df_filter["sm_pred"].values)
+    
+    rmse = np.sqrt(np.mean((rescaled_sm - df_filter["sm"].values)**2))
+    
+    df_filter["sm_pred_rescaled"] = rescaled_sm
+    
+    df_stations = pd.DataFrame({"station": [station_nam], "lon": [lon], "lat": [lat], "lamda": [lam_opt], "pearson": [corr_pearson], "spearman": [corr_spearman],"n_sm" : [n_sm], "n_pc" : [n_pc], "rmse": [rmse],
+                               "sm_pred_rescaled": [rescaled_sm], "sm_pred": [df_filter["sm_pred"].values], "sm": [df_filter["sm"].values]})
+
+
+    return df_filter, df_stations
+
+
 # soil moisture from synthetic precipitation
-df_1_syn, df_2_syn = sm_prediction(station_nam, precipitation=ds_syn_pc)
+df_1_syn, df_2_syn = sm_prediction_syn(station_nam)
 
 #%%
 
@@ -623,29 +715,70 @@ plt.tight_layout()
 sm_syn = df_1_syn['sm_pred_rescaled']
 sm_measured = df_1_syn['sm']
 
+a, loc, scale = gamma.fit(sm_measured)
+x = np.linspace(0, sm_measured.max(), 100)
+# Calculate the Gamma PDF for these x values
+pdf = gamma.pdf(x, a, loc=loc, scale=scale)
+
 n_bins = 100
 
 fig = plt.figure(figsize=(10, 5))
 
 ax1 = plt.subplot(121)
-ax1.hist(sm_measured, bins=n_bins)
+#ax1.hist(sm_measured, bins=n_bins, densit)
+ax1.hist(sm_measured, bins=n_bins, density=True, alpha=0.6, color='b', label='Measured Data')
+ax1.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
 ax1.set_title('Measured')
 ax1.set_xlim(0,0.8)
 ax1.set_xlabel('soil moisture [m³/m³ * 100]')
 ax1.set_ylabel('frequency')
+ax1.legend()
+
+a, loc, scale = gamma.fit(sm_syn)
+x = np.linspace(0, sm_syn.max(), 100)
+# Calculate the Gamma PDF for these x values
+pdf = gamma.pdf(x, a, loc=loc, scale=scale)
 
 ax2 = plt.subplot(1,2,2)
-ax2.hist(sm_syn, bins=n_bins)
+ax2.hist(sm_syn, bins=n_bins, density=True, alpha=0.6, color='b', label='Syn Data')
+ax2.plot(x, pdf, 'r-', lw=2, label='Fitted Gamma PDF')
 ax2.set_title('Predicted after Synthetic Precipitation')
 ax2.set_xlim(0,0.8)
 ax2.set_xlabel('soil moisture [m³/m³ * 100]')
 ax2.set_ylabel('frequency')
+ax2.legend()
 
 plt.tight_layout()
 plt.show()
 
+#plot the measured sm and the sythetic generated sym
+fig4, ax4 = plt.subplots(figsize=(12,4))
+
+df_1_syn_isel = df_1_syn.loc['2017-01-01 00:00:00':'2017-12-31 23:00:00']
+
+ax4.plot(df_1_syn_isel.index, df_1_syn_isel.pc, label='Precipitation [mm]', c="blue")
+ax4.set_ylabel("mm")
+
+ax4_2 = ax4.twinx()
+ax4_2.plot(df_1_isel.index, df_1_syn_isel.sm*100, label='Soil Moisture Measured [m³/m³ * 100]', c="green")
+ax4_2.set_ylabel("m³/m³ * 100")
+ax4_2.plot(df_1_isel.index, df_1_syn_isel.sm_pred_rescaled*100, label='Soil Moisture Prediction [m³/m³ * 100]', c="red")
+
+ax4.set_title("Station: " + station_nam)
+
+lines_1, labels_1 = ax4.get_legend_handles_labels()
+lines_2, labels_2 = ax4_2.get_legend_handles_labels()
+ax4.legend(lines_1 + lines_2, labels_1 + labels_2, bbox_to_anchor=(1.08, 0.5), loc="center left")
+
+plt.grid(alpha=0.4)
+plt.tight_layout()
+#plt.savefig('SM_pred_one_year'+ station_nam,dpi=400)
+plt.show()
+
+
+
 #%%
-# duration line of measured and predicted sm (from synthetic pc)
+# duration line of meaured and predicted sm (from synthetic pc)
 
 sm_syn_sorted = sm_syn.sort_values()
 sm_measured_sorted = sm_measured.sort_values()
